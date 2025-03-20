@@ -3,17 +3,17 @@ import requests
 import json
 from dotenv import load_dotenv
 
-load_dotenv()  # Carga variables del .env
+load_dotenv()  
 
 def load_data_electricity(start_date: str, end_date: str, output_dir: str = './data'):
-    api_key = os.getenv('API_KEY_ELECTRICITY')  # Lee la clave de la API desde el .env
+    api_key = os.getenv('API_KEY_ELECTRICITY')  
     
-    base_url = "https://api.eia.gov/v2/electricity/rto/region-data/data/"
+    base_url = "https://api.eia.gov/v2/electricity/rto/daily-region-data/data/"
     params = {
         "api_key": api_key,
-        "frequency": "hourly",
+        "frequency": "daily",
         "data[0]": "value",
-        "facets[respondent][]": "LDWP",  # Aquí se corrige el formato
+        "facets[respondent][]": "LDWP",  
         "start": start_date,
         "end": end_date,
         "sort[0][column]": "period",
@@ -22,9 +22,9 @@ def load_data_electricity(start_date: str, end_date: str, output_dir: str = './d
         "length": 5000
     }
     
-    headers = {"Content-Type": "application/json"}
+  
     
-    response = requests.get(base_url, headers=headers, params=params)
+    response = requests.get(base_url, params=params)
 
     if response.status_code == 200:
         os.makedirs(output_dir, exist_ok=True)
@@ -35,5 +35,5 @@ def load_data_electricity(start_date: str, end_date: str, output_dir: str = './d
     else:
         print(f"Error al obtener datos: {response.status_code}, {response.text}")
 
-# Ejemplo de uso
+
 load_data_electricity("2019-01-01T00", "2024-03-31T00")
