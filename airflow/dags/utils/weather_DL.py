@@ -4,18 +4,16 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
+from .class_types import WeatherStationId
 
-from class_types import WeatherStationId
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
 def load_data_weather(
         station_id: WeatherStationId,
-        output_dir: str = "./data",
+        hdfs_manager,
+        output_dir: str = "/data/raw/weather",
         timeout: Optional[int] = 300
 ) -> None:
     """

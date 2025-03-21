@@ -5,8 +5,7 @@ import os
 from dateutil.relativedelta import relativedelta
 from datetime import datetime
 
-from dotenv import load_dotenv
-from class_types import AirStationId
+from .class_types import AirStationId
 
 # Configure logging
 logging.basicConfig(
@@ -18,9 +17,7 @@ logging.basicConfig(
     # stream = sys.stdout  -> directs log messages to standard output
 )
 
-load_dotenv()
-
-def load_data_air(station_id: AirStationId, start_date: str, end_date: str, output_dir: str = './data'):
+def load_data_air(station_id: AirStationId, start_date: str, end_date: str,hdfs_manager, output_dir: str = '/data/raw/air_quality'):
     """
     Download OpenAQ data from an Air station using AWS CLI subprocess, from a given start date to an end date.
     

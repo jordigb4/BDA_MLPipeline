@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from sodapy import Socrata
-from dotenv import load_dotenv
+
 
 # Configure logging
 logging.basicConfig(
@@ -18,7 +18,7 @@ ENV_VARS = {
     'token': 'APP_TOKEN_TRAFFIC_ACC'
 }
 
-def load_traffic_acc_data(area: str, start_date: str, end_date: str, output_dir: str = './data') -> str:
+def load_traffic_acc_data(area: str, start_date: str, end_date: str,hdfs_manager, output_dir: str = '/data/raw/traffic') -> str:
     """
     Download LAcity data from Los Angeles Police Department using SoQL queries to a speficic area, from start date to end date.
     """
@@ -77,7 +77,6 @@ def load_traffic_acc_data(area: str, start_date: str, end_date: str, output_dir:
             client.close()
 
 if __name__ == "__main__":
-    load_dotenv()
     
     result_file = load_traffic_acc_data(
         area='Central',

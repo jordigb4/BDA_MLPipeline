@@ -1,0 +1,103 @@
+volumes:
+  postgres-data:
+  hdfs-namenode:
+  hdfs-datanode:
+  airflow-logs:
+
+networks:
+  bdanet:
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d/
+    networks:
+      - bdanet
+    ports:
+      - "5432:5432"
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop2.7.4-java8
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_fs_s3a_impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+      - HDFS_CONF_dfs_replication=1
+      - HADOOP_HEAPSIZE=200
+    volumes:
+      - hdfs-namenode:/hadoop/dfs/name
+    networks:
+      - bdanet
+    ports:
+      - "50070:50070"
+      - "8020:8020"
+
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop2.7.4-java8
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_fs_s3a_impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+      - HADOOP_HEAPSIZE=200
+    volumes:
+      - hdfs-datanode:/hadoop/dfs/data
+    networks:
+      - bdanet
+
+  airflow-webserver:
+    build: ./airflow
+    command: webserver
+    restart: always
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./airflow/.env:/opt/airflow/.env
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - airflow-logs:/opt/airflow/logs
+    networks:
+      - bdanet
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - namenode
+      - airflow-init
+
+  airflow-init:
+    build: ./airflow
+    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    networks:
+      - bdanet
+    depends_on:
+      - postgres
+
+  airflow-scheduler:
+    build: ./airflow
+    command: scheduler
+    restart: always
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    volumes:
+      - ./airflow/.env:/opt/airflow/.env
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - airflow-logs:/opt/airflow/logs
+    networks:
+      - bdanet
+    depends_on:
+      - airflow-webserver
+      - airflow-init

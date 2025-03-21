@@ -1,11 +1,10 @@
 import os
 import requests
 import json
-from dotenv import load_dotenv
 
-load_dotenv()  # Carga variables del .env
 
-def load_data_electricity(start_date: str, end_date: str, output_dir: str = './data'):
+
+def load_data_electricity(start_date: str, end_date: str,hdfs_manager, output_dir: str = '/data/raw/'):
     api_key = os.getenv('API_KEY_ELECTRICITY')  # Lee la clave de la API desde el .env
     
     base_url = "https://api.eia.gov/v2/electricity/rto/region-data/data/"
@@ -21,7 +20,7 @@ def load_data_electricity(start_date: str, end_date: str, output_dir: str = './d
         "offset": 0,
         "length": 5000
     }
-    
+
     headers = {"Content-Type": "application/json"}
     
     response = requests.get(base_url, headers=headers, params=params)
