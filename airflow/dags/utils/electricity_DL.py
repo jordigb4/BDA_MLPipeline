@@ -33,6 +33,3 @@ def load_data_electricity(start_date: str, end_date: str,hdfs_manager, output_di
         print(f"Datos guardados en {file_path}")
     else:
         print(f"Error al obtener datos: {response.status_code}, {response.text}")
-
-# Ejemplo de uso
-load_data_electricity("2019-01-01T00", "2024-03-31T00")

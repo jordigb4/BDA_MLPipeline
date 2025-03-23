@@ -20,6 +20,7 @@ default_args = {
     'start_date': datetime(2023, 1, 1),
 }
 
+hdfs_manager = HDFSManager()
 
 with DAG('Data_Processing_Pipeline',
          default_args=default_args,
@@ -30,7 +31,7 @@ with DAG('Data_Processing_Pipeline',
         task_id='ingest_weather',
         python_callable=load_data_weather,
         op_kwargs={
-            'station_id':WeatherStationId.LONG_BEACH,
+            'hdfs_manager':hdfs_manager,
         }
     )
     ingest_traffic_task = PythonOperator(
@@ -40,7 +41,8 @@ with DAG('Data_Processing_Pipeline',
             'area':'Central',
             'start_date':'2019-01-01',
             'end_date':'2019-01-31',
-            'output_dir':'./traffic_data'
+            'output_dir':'./traffic_data',
+            'hdfs_manager':hdfs_manager,
         }
     )
     ingest_air_task = PythonOperator(
@@ -50,7 +52,8 @@ with DAG('Data_Processing_Pipeline',
             'station_id': AirStationId.RESEDA,
             'start_date': '2019-01-01',
             'end_date': '2019-03-31',
-            'output_dir': './air_data'
+            'output_dir': './air_data',
+            'hdfs_manager': hdfs_manager,
         }
     )
     ingest_electricity_task = PythonOperator(
@@ -59,6 +62,7 @@ with DAG('Data_Processing_Pipeline',
         op_kwargs={
             'start_date':'2019-01-01T00',
             'end_date':'2024-03-31T00',
+            'hdfs_manager': hdfs_manager,
         }
     )
 

@@ -1,6 +1,7 @@
 from hdfs import InsecureClient
 from dotenv import load_dotenv
 import os
+import subprocess
 
 load_dotenv('/opt/airflow/.env')
 
@@ -25,7 +26,7 @@ class HDFSManager:
 
     def mkdirs(self, path):
         """Create directory including parent directories if needed"""
-        return self._client.makedirs(path)
+        return self._client.makedirs(path,permission=755)
 
     def delete(self, path, recursive=False):
         """Delete a file or directory"""
@@ -33,7 +34,10 @@ class HDFSManager:
 
     def copy_from_local(self, local_path, hdfs_path, overwrite=True):
         """Upload file from local system to HDFS"""
-        return self._client.upload(hdfs_path, local_path, overwrite=overwrite)
+
+        self.mkdirs(hdfs_path)
+        result = self._client.upload(hdfs_path, local_path, overwrite=overwrite)
+        return result
 
     def copy_to_local(self, hdfs_path, local_path, overwrite=True):
         """Download file from HDFS to local system"""
@@ -53,7 +57,6 @@ class HDFSManager:
         """Get size of a file in bytes"""
         status = self._client.status(path)
         return status['length']
-
 
 
 
