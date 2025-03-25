@@ -36,10 +36,14 @@ def load_data_electricity(start_date: str, end_date: str, output_dir: str = './d
         if response.status_code == 200:
             data = response.json()
 
-            filtered_data = [
-                entry for entry in data.get("response", {}).get("data", [])
-                if entry.get("type-name") == "Demand" and entry.get("timezone") == "Pacific"
-            ]
+            filtered_data = []
+            for entry in data.get("response", {}).get("data", []):
+                if entry.get("type-name") == "Demand" and entry.get("timezone") == "Pacific":
+                   
+                    entry.pop("type-name", None)
+                    entry.pop("timezone-description", None)
+                    filtered_data.append(entry)
+
             all_data.extend(filtered_data)
 
             print(f"Descargadas {len(filtered_data)} filas (offset {offset})")
