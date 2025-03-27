@@ -2,25 +2,35 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
-
 from .class_types import WeatherStationId
 
 
-logger = logging.getLogger(__name__)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, # minimum logging level
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%d-%m-%Y %H:%M:%S'
+    # filename = 'app.log' directs log messages to that file
+    # filemode = 'a' (append) or 'w' (write/overwrite): mode of opening log file
+    # stream = sys.stdout  -> directs log messages to standard output
+)
+# Create a module-specific logger
+log = logging.getLogger(__name__)
+
 
 def load_data_weather(hdfs_manager):
 
     # Load data from all three stations
-    load_data_from_station(WeatherStationId.LONG_BEACH,hdfs_manager)
-    load_data_from_station(WeatherStationId.DOWNTOWN,hdfs_manager)
-    load_data_from_station(WeatherStationId.RESEDA,hdfs_manager)
+    load_data_from_station(WeatherStationId.LONG_BEACH, hdfs_manager)
+    load_data_from_station(WeatherStationId.DOWNTOWN, hdfs_manager)
+    load_data_from_station(WeatherStationId.RESEDA, hdfs_manager)
 
+    # Clear temporal files of previous data collections
     subprocess.run(["rm", "-rf", '/tmp/weather/'], check=True)
-def load_data_from_station(
-        station_id: WeatherStationId,
-        hdfs_manager,
-) -> None:
+
+
+def load_data_from_station(station_id: WeatherStationId, 
+                           hdfs_manager) -> None:
     """
     Load weather data for a specific station
 
@@ -44,7 +54,7 @@ def load_data_from_station(
         OUTPUT_DIR=tmp_dir
     )
 
-    logger.info(
+    log.info(
         f"Initiating weather data download for station {station_id.name} "
         f"Using command: {formatted_command}"
     )
@@ -60,15 +70,15 @@ def load_data_from_station(
         )
 
         if result.stderr:
-            logger.info(f"Command stderr: {result.stderr}")
+            log.info(f"Command stderr: {result.stderr}")
 
         # Copy contents to hdfs
         hdfs_manager.copy_from_local(tmp_dir,hdfs_dir)
 
     except Exception as e:
-        logger.error(f"Unexpected error during data download: {e}")
+        log.error(f"Unexpected error during data download: {e}")
         raise
 
-    logger.info(
+    log.info(
         f"Successfully downloaded weather data for station {station_id.name} "
     )

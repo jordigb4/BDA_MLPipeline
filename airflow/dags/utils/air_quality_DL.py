@@ -16,8 +16,14 @@ logging.basicConfig(
     # filemode = 'a' (append) or 'w' (write/overwrite): mode of opening log file
     # stream = sys.stdout  -> directs log messages to standard output
 )
+# Create a module-specific logger
+log = logging.getLogger(__name__)
 
-def load_data_air(station_id: AirStationId, start_date: str, end_date: str,hdfs_manager, output_dir: str = '/data/raw/air_quality'):
+
+def load_data_air(station_id: AirStationId, 
+                  start_date: str, 
+                  end_date: str, 
+                  output_dir: str = '/data/raw/air_quality') -> None:
     """
     Download OpenAQ data from an Air station using AWS CLI subprocess, from a given start date to an end date.
     
@@ -32,19 +38,19 @@ def load_data_air(station_id: AirStationId, start_date: str, end_date: str,hdfs_
     """
     # Validate date format
     try:
-        # Validate date format and order
         start = datetime.strptime(start_date, '%Y-%m-%d')
         end = datetime.strptime(end_date, '%Y-%m-%d')
         if start > end:
-            raise ValueError("Start date cannot be after end date")
+            log.error("Start date cannot be after end date")
+            raise
 
     except ValueError as e:
-        logging.error(f"Invalid date format: {str(e)}")
+        log.error(f"Invalid date format: {str(e)}")
         raise
 
-    logging.info("=" * 40)
-    logging.info("Processing location: %s", station_id.name)
-    logging.info("=" * 40)
+    log.info("=" * 40)
+    log.info("Processing location: %s", station_id.name)
+    log.info("=" * 40)
 
     current = start
     while current <= end:
@@ -71,7 +77,7 @@ def load_data_air(station_id: AirStationId, start_date: str, end_date: str,hdfs_
             '--region', 'us-east-1'
         ]
 
-        logging.info("Downloading %s...", current.strftime('%Y-%m'))
+        log.info("Downloading %s...", current.strftime('%Y-%m'))
 
         # Execute command
         result = subprocess.run(cmd, capture_output=True, text=True)  # better without shell=True for security reasons
@@ -80,22 +86,13 @@ def load_data_air(station_id: AirStationId, start_date: str, end_date: str,hdfs_
         if result.returncode == 0:
             if "download:" in result.stdout:
                 num_files = result.stdout.count("download:")
-                logging.info("Downloaded %d new files", num_files)
+                log.info("Downloaded %d new files", num_files)
             else:
-                logging.info("No new files to download")
+                log.info("No new files to download")
         else:
-            logging.error("Error processing %s", s3_prefix)
-            logging.error("Exit code: %d", result.returncode)
-            logging.error("Error message:\n%s", result.stderr)
+            log.error("Error processing %s", s3_prefix)
+            log.error("Exit code: %d", result.returncode)
+            log.error("Error message:\n%s", result.stderr)
 
         # Move to next month
         current += relativedelta(months=+1)
-
-if __name__ == "__main__":
-    # Example usage
-    load_data_air(
-        station_id=AirStationId.RESEDA,
-        start_date='2019-01-01',
-        end_date='2019-03-31',
-        output_dir='./air_data'
-    )

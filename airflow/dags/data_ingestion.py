@@ -1,6 +1,6 @@
 from datetime import datetime
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator # type:ignore
 
 from utils import (load_data_weather,
                    load_traffic_acc_data,
@@ -62,6 +62,7 @@ with DAG('Data_Processing_Pipeline',
         op_kwargs={
             'start_date':'2019-01-01T00',
             'end_date':'2024-03-31T00',
+            'output_dir': './air_data',
             'hdfs_manager': hdfs_manager,
         }
     )

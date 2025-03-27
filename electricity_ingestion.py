@@ -1,9 +1,9 @@
 from datetime import datetime
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from hdfs import InsecureClient
+from airflow.operators.python import PythonOperator # type:ignore
+from hdfs import InsecureClient # type:ignore
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine # type:ignore
 import json
 
 default_args = {

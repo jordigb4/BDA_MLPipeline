@@ -1,4 +1,4 @@
-from hdfs import InsecureClient
+from hdfs import InsecureClient # type:ignore
 from dotenv import load_dotenv
 import os
 import subprocess
@@ -30,7 +30,7 @@ class HDFSManager:
 
     def delete(self, path, recursive=False):
         """Delete a file or directory"""
-        return self._client.delete(path, recursivse=recursive)
+        return self._client.delete(path, recursive=recursive)
 
     def copy_from_local(self, local_path, hdfs_path, overwrite=True):
         """Upload file from local system to HDFS"""
