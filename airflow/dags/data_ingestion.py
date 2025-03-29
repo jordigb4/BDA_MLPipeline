@@ -1,8 +1,8 @@
-from airflow.operators.python import PythonOperator # type:ignore
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from airflow import DAG
-from utils import *
+import utils.landing_utils as landing_tasks
+import utils.formatting_utils as formatting_tasks
 
 load_dotenv(dotenv_path='/opt/airflow/.env')
 
@@ -12,12 +12,8 @@ default_args = {
     'retries': 2,  # Number of retries before failing permanently
     'retry_delay': timedelta(minutes=5),  # Wait 5 minutes between retries
     'execution_timeout': timedelta(minutes=30),  # Max allowed runtime per task
-    #'email': ['your_team@domain.com'],  # Notification email
-    #'email_on_failure': True,  # Send email on task failure
-}
 
-# Initialize the Client that connect to NameNode of the launched HDFS
-hdfs_manager = HDFSManager()
+}
 
 with DAG(
     'Data_Processing_Pipeline',
@@ -28,43 +24,11 @@ with DAG(
     default_view='graph',  # Default DAG display view
 ) as dag:
 
-    ingest_weather_task = PythonOperator(
-        task_id='ingest_weather',
-        python_callable=load_data_weather,
-        op_kwargs={
-            'start_date': '2019-01-01',
-            'end_date': '2024-03-31',
-            'hdfs_manager': hdfs_manager}
-    )
+    # Ingestion tasks (save in HDFS)
+    ingest_weather, ingest_traffic, ingest_air, ingest_electricity = landing_tasks.create_tasks(dag)
 
-    ingest_traffic_task = PythonOperator(
-        task_id='ingest_traffic',
-        python_callable=load_data_traffic_acc,
-        op_kwargs={
-            'start_date': '2019-01-01',
-            'end_date': '2024-03-31',
-            'hdfs_manager': hdfs_manager,
-        }
-    )
+    # Formatting tasks
+    format_weather = formatting_tasks.create_tasks(dag)
 
-    ingest_air_task = PythonOperator(
-        task_id='ingest_air',
-        python_callable=load_data_air,
-        op_kwargs={
-            'start_date': '2019-01-01',
-            'end_date': '2024-03-31',
-            'hdfs_manager': hdfs_manager,
-        }
-    )
 
-    ingest_electricity_task = PythonOperator(
-        task_id='ingest_electricity',
-        python_callable=load_data_electricity,
-        op_kwargs={
-            'start_date': '2019-01-01T00',
-            'end_date': '2024-03-31T00',
-            'hdfs_manager': hdfs_manager,
-        }
-    )
-
-    [ingest_weather_task, ingest_traffic_task, ingest_air_task, ingest_electricity_task]
+    [ingest_weather >> format_weather,ingest_traffic,ingest_air,ingest_electricity]

@@ -17,4 +17,5 @@ hdfs
 sqlalchemy
 python-dotenv
 duckdb
+pyspark
 

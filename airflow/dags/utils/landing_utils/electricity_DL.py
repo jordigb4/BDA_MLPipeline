@@ -1,4 +1,4 @@
-from .hdfs_utils import HDFSManager
+from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
 import requests

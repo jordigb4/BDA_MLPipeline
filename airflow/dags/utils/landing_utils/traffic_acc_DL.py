@@ -1,5 +1,5 @@
-from .class_types import TrafficAccId
-from .hdfs_utils import HDFSManager
+from dags.utils.landing_utils.class_types import TrafficAccId
+from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from sodapy import Socrata # type: ignore
 from pathlib import Path

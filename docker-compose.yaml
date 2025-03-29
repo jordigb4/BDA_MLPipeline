@@ -61,6 +61,7 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
     volumes:
       - ./airflow/.env:/opt/airflow/.env
+      - ./postgresql-42.7.3.jar:/opt/airflow/postgresql-42.7.3.jar
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - airflow-logs:/opt/airflow/logs
@@ -94,6 +95,7 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
     volumes:
       - ./airflow/.env:/opt/airflow/.env
+      - ./postgresql-42.7.3.jar:/opt/airflow/postgresql-42.7.3.jar
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - airflow-logs:/opt/airflow/logs

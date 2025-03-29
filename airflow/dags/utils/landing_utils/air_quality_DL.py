@@ -1,6 +1,6 @@
 from dateutil.relativedelta import relativedelta
-from .class_types import AirStationId
-from .hdfs_utils import HDFSManager
+from dags.utils.landing_utils.class_types import AirStationId
+from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
 import subprocess
