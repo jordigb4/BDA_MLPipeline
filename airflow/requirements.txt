@@ -16,4 +16,5 @@ urllib3
 hdfs
 sqlalchemy
 python-dotenv
+duckdb
 

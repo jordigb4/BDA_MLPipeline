@@ -1,11 +1,11 @@
+from dateutil.relativedelta import relativedelta
+from .class_types import AirStationId
+from .hdfs_utils import HDFSManager
+from datetime import datetime
+from pathlib import Path
 import subprocess
 import logging
 import os
-
-from dateutil.relativedelta import relativedelta
-from datetime import datetime
-
-from .class_types import AirStationId
 
 # Configure logging
 logging.basicConfig(
@@ -16,41 +16,55 @@ logging.basicConfig(
     # filemode = 'a' (append) or 'w' (write/overwrite): mode of opening log file
     # stream = sys.stdout  -> directs log messages to standard output
 )
+
 # Create a module-specific logger
 log = logging.getLogger(__name__)
 
+def load_data_air(hdfs_manager: HDFSManager,
+                      start_date: str,
+                      end_date: str):
+    """
+    Loads data from all three selected stations
+    """
+    
+    load_station_data(AirStationId.LONG_BEACH, start_date, end_date, hdfs_manager)
+    load_station_data(AirStationId.DOWNTOWN, start_date, end_date, hdfs_manager)
+    load_station_data(AirStationId.RESEDA, start_date, end_date, hdfs_manager)
 
-def load_data_air(station_id: AirStationId, 
+    # Clear temporal files of previous data collections
+    subprocess.run(["rm", "-rf", '/tmp/air_quality/'], check=True)
+
+
+def load_station_data(station_id: AirStationId, 
                   start_date: str, 
                   end_date: str, 
-                  output_dir: str = '/data/raw/air_quality') -> None:
+                  hdfs_manager: HDFSManager):
     """
     Download OpenAQ data from an Air station using AWS CLI subprocess, from a given start date to an end date.
     
     Args:
-        station_id (AirStationId): Air station identifier.
-        start_date (str): Start date in 'YYYY-MM-DD' format.
-        end_date (str): End date in 'YYYY-MM-DD' format.
-        output_dir (str): Base output directory.
+        station_id: Station identifier with name/value attributes
+        start_date: Start date in 'YYYY-MM-DD' format
+        end_date: End date in 'YYYY-MM-DD' format
+        hdfs_manager: HDFS management client for final storage
     
     Result:
         Downloads the data from the OpenAQ S3 bucket to the output directory (.csv.gz files).
     """
-    # Validate date format
+    # ===== DATE VALIDATION =====
     try:
         start = datetime.strptime(start_date, '%Y-%m-%d')
         end = datetime.strptime(end_date, '%Y-%m-%d')
-        if start > end:
-            log.error("Start date cannot be after end date")
+        if end < start:
+            log.error(f"end_date {end_date} precedes start_date {start_date}")
             raise
-
     except ValueError as e:
         log.error(f"Invalid date format: {str(e)}")
         raise
 
-    log.info("=" * 40)
-    log.info("Processing location: %s", station_id.name)
-    log.info("=" * 40)
+    # ===== PATH CONFIGURATION =====
+    tmp_dir = f'/tmp/air_quality/{station_id.name}'
+    hdfs_dir = "/data/landing/air_quality"
 
     current = start
     while current <= end:
@@ -58,18 +72,18 @@ def load_data_air(station_id: AirStationId,
         year = current.strftime('%Y')
         month = current.strftime('%m')
         
-        # Build paths
-        path_to_save = os.path.join(output_dir, station_id.name, year, month)
-        os.makedirs(path_to_save, exist_ok=True)
+        # Build relative path
+        rel_path = Path(f"{tmp_dir}/{year}/{month}")
+        rel_path.mkdir(parents=True, exist_ok=True)
 
-        # Build AWS CLI command
+        # ===== BUILD AWS CLI COMMAND =====
         s3_prefix = os.getenv('S3_PREFIX_AIR_QUALITY').format(
             station_id=station_id.value, year=year, month=month
         )
         cmd = [
             'aws', 's3', 'sync',
             s3_prefix,
-            path_to_save,
+            rel_path,
             '--exclude', '*',
             '--include', '*.csv.gz',
             '--no-sign-request',
@@ -77,22 +91,24 @@ def load_data_air(station_id: AirStationId,
             '--region', 'us-east-1'
         ]
 
-        log.info("Downloading %s...", current.strftime('%Y-%m'))
-
-        # Execute command
-        result = subprocess.run(cmd, capture_output=True, text=True)  # better without shell=True for security reasons
-
-        # Handle command output
-        if result.returncode == 0:
-            if "download:" in result.stdout:
-                num_files = result.stdout.count("download:")
-                log.info("Downloaded %d new files", num_files)
-            else:
-                log.info("No new files to download")
-        else:
-            log.error("Error processing %s", s3_prefix)
-            log.error("Exit code: %d", result.returncode)
-            log.error("Error message:\n%s", result.stderr)
+        # ===== EXECUTION PHASE =====
+        log.info(f"Downloading S3 data for {station_id} from {current.strftime('%Y-%m')}")
+        start_time = datetime.now()
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)  # better without shell=True for security reasons
+            num_files = result.stdout.count("download:")
+            log.info(f"Retrieved {num_files} files in "
+                        f"{(datetime.now()-start_time).total_seconds():.2f}s")   
+        except subprocess.CalledProcessError as e:
+            log.error(f"S3 sync failed: {e.stderr}")
+            raise
 
         # Move to next month
         current += relativedelta(months=+1)
+    
+    # ===== HDFS STORAGE =====
+    if num_files > 0:
+        log.info(f"Transferring to HDFS: {hdfs_dir}")
+        hdfs_manager.copy_from_local(tmp_dir, hdfs_dir)
+    else:
+        log.warning("No records found - skipping HDFS transfer")

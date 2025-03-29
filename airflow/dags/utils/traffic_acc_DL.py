@@ -1,18 +1,19 @@
-import os
-import json
-import logging
+from .class_types import TrafficAccId
+from .hdfs_utils import HDFSManager
 from datetime import datetime
-from sodapy import Socrata
+from sodapy import Socrata # type: ignore
+from pathlib import Path
+import subprocess
+import logging
+import json
+import os
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, # minimum logging level
     format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S'
-    # filename = 'app.log' directs log messages to that file
-    # filemode = 'a' (append) or 'w' (write/overwrite): mode of opening log file
-    # stream = sys.stdout  -> directs log messages to standard output
-)
+    datefmt='%d-%m-%Y %H:%M:%S')
+
 # Create a module-specific logger
 log = logging.getLogger(__name__)
 
@@ -22,65 +23,84 @@ MODULE_VARS = {
     'token': 'APP_TOKEN_TRAFFIC_ACC'
 }
 
+def load_data_traffic_acc(hdfs_manager: HDFSManager,
+                      start_date: str,
+                      end_date: str):
+    """
+    Loads data from all three selected stations
+    """
+    
+    load_area_data(TrafficAccId.LONG_BEACH, start_date, end_date, hdfs_manager)
+    load_area_data(TrafficAccId.DOWNTOWN, start_date, end_date, hdfs_manager)
+    load_area_data(TrafficAccId.RESEDA, start_date, end_date, hdfs_manager)
 
-def load_traffic_acc_data(area: str, 
+    # Clear temporal files of previous data collections
+    subprocess.run(["rm", "-rf", '/tmp/traffic_acc/'], check=True)
+    
+
+def load_area_data(area: str, 
                           start_date: str, 
                           end_date: str, 
-                          output_dir: str = '/data/raw/traffic') -> None:
+                          hdfs_manager: HDFSManager) -> None:
     """
-    Download LAcity data from Los Angeles Police Department using SoQL queries to a speficic area, from start date to end date.
+    HDFS storage of LAcity traffic accidents data (JSON) using SoQL queries to a speficic area, from start date to end date.
     """
+    # ===== DATE VALIDATION =====
     try:
-        # Validate date format and order
-        try:
-            start = datetime.strptime(start_date, '%Y-%m-%d')
-            end = datetime.strptime(end_date, '%Y-%m-%d')
-            if start > end:
-                log.error("Start date cannot be after end date")
-                raise
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        if start_dt > end_dt:
+            raise ValueError("Start date after end date")
+    except ValueError as e:
+        log.error(f"Date validation failed: {str(e)}")
+        raise
 
-        except ValueError as e:
-            log.error(f"Invalid date format: {str(e)}")
-            raise
+    # ==== PATH CONFIGURATION ====
+    tmp_dir = Path(f'/tmp/traffic_acc/{area}')
+    hdfs_dir = "/data/landing/traffic_acc"
 
-        # Setup API client
-        client = Socrata(
-            domain=os.getenv(MODULE_VARS['domain']),
-            app_token=os.getenv(MODULE_VARS['token'])
-        )
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    output_file = tmp_dir / f"{start_date.replace('-', '')}_{end_date.replace('-', '')}.json"
 
-        # Build query
-        query = (
-            f"area_name = '{area}' AND "
-            f"date_occ BETWEEN '{start_date}' AND '{end_date}'"
-        )
+    # ===== API CONNECTION =====
+    client = Socrata(
+        domain=os.getenv(MODULE_VARS['domain']),
+        app_token=os.getenv(MODULE_VARS['token']))
 
-        # Fetch raw data
+    # ===== SOCRATA QUERY =====
+    query = (
+        f"area_name = '{area}' AND "
+        f"date_occ BETWEEN '{start_date}' AND '{end_date}'")
+
+    # ===== DATA EXTRACTION =====
+    try:
+        log.info(f"Querying traffic data for {area}")
+        start_time = datetime.now()
         results = client.get(
             os.getenv(MODULE_VARS['dataset']),
             where=query,
-            limit=100000
-        )
+            limit=100000)
+        duration = datetime.now() - start_time
 
         if not results:
             log.warning(f"No data found for {area} ({start_date} to {end_date})")
+            return
 
-        # Ensure output directory exists
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Generate filename
-        filename = f"{area}_{start_date}_{end_date}_raw.json"
-        filepath = os.path.join(output_dir, filename)
-
-        # Write raw JSON to file
-        with open(filepath, 'w', encoding='utf-8') as f:
+        # ===== LOCAL STORAGE =====
+        with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2) # indent=2 for human-readable formatting (remove for compact JSON) 
+        log.info(f"Retrieved {len(results)} records in {duration.total_seconds():.2f}s")
 
-        log.info(f"Successfully saved {len(results)} records to {filepath}")
-    
     except Exception as e:
-        log.error(f"Failed to process data: {str(e)}")
-   
+        log.error(f"API operation failed: {str(e)}")
+        raise
     finally:
-        if 'client' in locals():
-            client.close()
+        client.close()
+
+    try:
+    # ===== HDFS STORAGE =====
+        log.info(f"Transferring to HDFS: {hdfs_dir}")
+        hdfs_manager.copy_from_local(str(tmp_dir), hdfs_dir)
+    except Exception as e:
+        log.error(f"HDFS transfer failed: {str(e)}")
+        raise
