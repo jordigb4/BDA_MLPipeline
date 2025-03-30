@@ -1,13 +1,13 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator # type:ignore
+from .weather_QL import quality_data
 
-from .weather_QL import format_weather
 def create_tasks(dag):
 
-    format_weather_task  = PythonOperator(
-        task_id='format_weather',
-        python_callable=format_weather,
+    quality_data_task  = PythonOperator(
+        task_id='quality_checking',
+        python_callable=quality_data,
         dag=dag
     )
 
-    return format_weather_task
+    return quality_data_task

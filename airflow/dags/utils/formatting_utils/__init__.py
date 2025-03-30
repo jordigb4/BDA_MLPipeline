@@ -1,7 +1,7 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-
+from airflow.operators.python import PythonOperator # type:ignore
 from .weather_FR import format_weather
+
 def create_tasks(dag):
 
     format_weather_task  = PythonOperator(

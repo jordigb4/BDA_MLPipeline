@@ -31,4 +31,4 @@ with DAG(
     format_weather = formatting_tasks.create_tasks(dag)
 
 
-    [ingest_weather >> format_weather,ingest_traffic,ingest_air,ingest_electricity]
+    [ingest_weather >> format_weather, ingest_traffic, ingest_air, ingest_electricity]
