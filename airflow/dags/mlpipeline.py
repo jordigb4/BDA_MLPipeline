@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from airflow import DAG
 import utils.landing as landing_tasks
 import utils.formatting as formatting_tasks
-
+import utils.quality as quality_tasks
 load_dotenv(dotenv_path='/opt/airflow/.env')
 
 default_args = {
@@ -16,7 +16,7 @@ default_args = {
 }
 
 with DAG(
-    'Data_Processing_Pipeline',
+    'Machine_Learning_Pipeline',
     default_args=default_args,
     schedule_interval='@daily',
     catchup=False,
@@ -30,5 +30,7 @@ with DAG(
     # Formatting tasks
     format_weather = formatting_tasks.create_tasks(dag)
 
+    # Quality tasks
+    quality_weather = quality_tasks.create_tasks(dag)
 
-    [ingest_weather >> format_weather, ingest_traffic, ingest_air, ingest_electricity]
+    [ingest_weather >> format_weather >> quality_weather,ingest_traffic,ingest_air,ingest_electricity]

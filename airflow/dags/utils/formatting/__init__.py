@@ -1,12 +1,18 @@
-from airflow import DAG
-from airflow.operators.python import PythonOperator # type:ignore
+from airflow.operators.python import PythonOperator
+from dags.utils.postgres_utils import PostgresManager
+
 from .weather_FR import format_weather
 
-def create_tasks(dag):
+# Initialize Postgres Manager
+postgres_manager = PostgresManager()
 
-    format_weather_task  = PythonOperator(
+
+def create_tasks(dag):
+    format_weather_task = PythonOperator(
         task_id='format_weather',
         python_callable=format_weather,
+        op_kwargs={
+            'postgres_manager': postgres_manager},
         dag=dag
     )
 

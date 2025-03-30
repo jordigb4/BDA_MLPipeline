@@ -2,13 +2,14 @@ import logging
 import os
 
 from dags.utils.landing.class_types import WeatherStationId
+from dags.utils.postgres_utils import PostgresManager
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 
-def format_weather():
+def format_weather(postgres_manager: PostgresManager):
     """
-    Loads data from all three selected stations
+    Formats data from all three selected stations
     """
 
     # Base hdfs path
@@ -25,12 +26,12 @@ def format_weather():
     reseda_table = f"formatted_{WeatherStationId.RESEDA.name}"
 
     # Call functions
-    format_station_weather(landing_long_beach, long_beach_table)
-    format_station_weather(landing_downtown, downtown_table)
-    format_station_weather(landing_reseda, reseda_table)
+    format_station_weather(landing_long_beach, long_beach_table, postgres_manager)
+    format_station_weather(landing_downtown, downtown_table, postgres_manager)
+    format_station_weather(landing_reseda, reseda_table, postgres_manager)
 
 
-def format_station_weather(landing_path: str, table_name: str):
+def format_station_weather(landing_path: str, table_name: str, postgres_manager: PostgresManager):
     # Initialize Spark session
     spark = SparkSession.builder \
         .config("spark.jars", os.getenv('JDBC_URL')) \
@@ -59,14 +60,6 @@ def format_station_weather(landing_path: str, table_name: str):
     pivoted_df.show(5, truncate=False)
 
     # Write to PostgreSQL (update connection details as needed)
-    pivoted_df.write \
-        .format("jdbc") \
-        .option("url", "jdbc:postgresql://postgres:5432/airflow") \
-        .option("dbtable", table_name) \
-        .option("user", "airflow") \
-        .option("password", "airflow") \
-        .option("driver", "org.postgresql.Driver") \
-        .mode("append") \
-        .save()
+    postgres_manager.write_dataframe(pivoted_df, table_name)
 
     spark.stop()
