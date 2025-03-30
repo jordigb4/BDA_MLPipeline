@@ -46,56 +46,79 @@ def load_data_electricity(start_date: str,
     hdfs_dir = "/data/landing/electricity"
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    output_file = tmp_dir / f"{start_date.replace('-', '')}_{end_date.replace('-', '')}.json"
+    output_file = tmp_dir / f"{clean_start}_{clean_end}.json"
 
     # ===== API CONFIGURATION =====
     api_key = os.getenv('API_KEY_ELECTRICITY')
     base_url = os.getenv('API_DOMAIN_ELECTRICITY')
+    offset = 0
+    length = 5000 # maximum length request
     
-    # ===== REQUEST PARAMETERS =====
-    params = {
-        "api_key": api_key,
-        "frequency": "hourly",
-        "data[0]": "value",
-        "facets[respondent][]": "LDWP",
-        "start": start_date,
-        "end": end_date,
-        "sort[0][column]": "period",
-        "sort[0][direction]": "desc",
-        "offset": 0,
-        "length": 5000
-    }
-    headers = {"Content-Type": "application/json"}
-
     # ===== DATA EXTRACTION =====
+    start_time = datetime.now()
+    log.info(f"Requesting electricity data ({start_date} to {end_date})")
+
+    all_data = []
+    while True:
+        params = {
+            "api_key": api_key,
+            "frequency": "daily",
+            "data[0]": "value",
+            "facets[respondent][]": "LDWP",
+            "start": start_date,
+            "end": end_date,
+            "sort[0][column]": "period",
+            "sort[0][direction]": "desc",
+            "offset": offset,
+            "length": length
+        }
+
+        try:   
+            response = requests.get(base_url, params=params, timeout=30) #prevent hanging requests with timeout
+
+            if response.status_code != 200:
+                log.error(f"API request failed: {response.status_code} - {response.text[:200]}")
+                raise
+            
+            data = response.json()
+            if not data.get('response', {}).get('data'):
+                log.warning("No electricity data found for given parameters")
+                return
+            else:
+                filtered_data = []
+                for entry in data.get("response", {}).get("data", []):
+                    if entry.get("type-name") == "Demand" and entry.get("timezone") == "Pacific":
+                        entry.pop("type-name", None)
+                        entry.pop("timezone-description", None)
+                        filtered_data.append(entry)
+
+                all_data.extend(filtered_data)
+                log.info(f"Retrieved {len(filtered_data)} rows (offset {offset})")
+
+                total_rows = int(data["response"].get("total", 0))
+                offset += length
+
+                if offset >= total_rows:
+                    break
+
+        except requests.exceptions.RequestException as e:
+            log.error(f"API connection failed: {str(e)}")
+            raise
+    
+    duration = datetime.now() - start_time
+    # ===== LOCAL STORAGE =====
     try:
-        log.info(f"Requesting electricity data ({start_date} to {end_date})")
-        start_time = datetime.now()
-        response = requests.get(base_url, headers=headers, params=params, timeout=30) #prevent hanging requests with timeout
-        duration = datetime.now() - start_time
-        
-        if response.status_code != 200:
-            log.error(f"API request failed: {response.status_code} - {response.text[:200]}")
-            raise
-
-        data = response.json()
-        if not data.get('response', {}).get('data'):
-            log.warning("No electricity data found for given parameters")
-            return
-
-        # ===== LOCAL STORAGE =====
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2) # balance indent between compactness and readability
-        log.info(f"Saved {len(data['response']['data'])} records in {duration.total_seconds():.2f}s")
-
-        # ===== HDFS STORAGE =====
-        try:
-            log.info(f"Transferring to HDFS: {hdfs_dir}")
-            hdfs_manager.copy_from_local(output_file, hdfs_dir)
-        except Exception as e:
-            log.error(f"HDFS transfer failed: {str(e)}")
-            raise
-
-    except requests.exceptions.RequestException as e:
-        log.error(f"API connection failed: {str(e)}")
+        with open(output_file, "w", encoding='utf-8') as f:
+            json.dump(all_data, f, indent=2) # balance indent between compactness and readability
+        log.info(f"Saved {len(all_data)} records in {duration.total_seconds():.2f}s")
+    except OSError as e:
+        log.error(f"Failed to save data to {output_file}: {e}")
+        raise
+    
+    # ===== HDFS STORAGE =====
+    try:
+        log.info(f"Transferring to HDFS: {hdfs_dir}")
+        hdfs_manager.copy_from_local(output_file, hdfs_dir)
+    except Exception as e:
+        log.error(f"HDFS transfer failed: {str(e)}")
         raise

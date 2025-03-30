@@ -1,4 +1,4 @@
-from dags.utils.landing.class_types import TrafficAccId
+from dags.utils.landing_utils.class_types import TrafficAccId # type:ignore
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from sodapy import Socrata # type: ignore
@@ -23,22 +23,24 @@ MODULE_VARS = {
     'token': 'APP_TOKEN_TRAFFIC_ACC'
 }
 
+
 def load_data_traffic_acc(hdfs_manager: HDFSManager,
                       start_date: str,
                       end_date: str):
     """
     Loads data from all three selected stations
     """
-    
-    load_area_data(TrafficAccId.LONG_BEACH, start_date, end_date, hdfs_manager)
-    load_area_data(TrafficAccId.DOWNTOWN, start_date, end_date, hdfs_manager)
-    load_area_data(TrafficAccId.RESEDA, start_date, end_date, hdfs_manager)
+    try:
+        # Process each area one by one
+        load_area_data(TrafficAccId.LONG_BEACH, start_date, end_date, hdfs_manager)
+        load_area_data(TrafficAccId.DOWNTOWN, start_date, end_date, hdfs_manager)
+        load_area_data(TrafficAccId.RESEDA, start_date, end_date, hdfs_manager)
+    finally:
+        # Clean up temporary files after ALL areas have been processed
+        subprocess.run(["rm", "-rf", '/tmp/traffic_acc/'], check=True)
 
-    # Clear temporal files of previous data collections
-    subprocess.run(["rm", "-rf", '/tmp/traffic_acc/'], check=True)
-    
 
-def load_area_data(area: str, 
+def load_area_data(area: TrafficAccId, 
                           start_date: str, 
                           end_date: str, 
                           hdfs_manager: HDFSManager) -> None:
@@ -56,11 +58,12 @@ def load_area_data(area: str,
         raise
 
     # ==== PATH CONFIGURATION ====
-    tmp_dir = Path(f'/tmp/traffic_acc/{area}')
+    tmp_dir = Path(f'/tmp/traffic_acc/{area.name}')
     hdfs_dir = "/data/landing/traffic_acc"
 
+    # Ensure the directory exists
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    output_file = tmp_dir / f"{start_date.replace('-', '')}_{end_date.replace('-', '')}.json"
+    output_file = tmp_dir / f"{start_date}_{end_date}.json"
 
     # ===== API CONNECTION =====
     client = Socrata(
@@ -69,12 +72,12 @@ def load_area_data(area: str,
 
     # ===== SOCRATA QUERY =====
     query = (
-        f"area_name = '{area}' AND "
+        f"area_name = '{area.value}' AND "
         f"date_occ BETWEEN '{start_date}' AND '{end_date}'")
 
     # ===== DATA EXTRACTION =====
     try:
-        log.info(f"Querying traffic data for {area}")
+        log.info(f"Querying traffic data for {area.name}")
         start_time = datetime.now()
         results = client.get(
             os.getenv(MODULE_VARS['dataset']),
@@ -83,24 +86,24 @@ def load_area_data(area: str,
         duration = datetime.now() - start_time
 
         if not results:
-            log.warning(f"No data found for {area} ({start_date} to {end_date})")
+            log.warning(f"No data found for {area.name} ({start_date} to {end_date})")
             return
 
         # ===== LOCAL STORAGE =====
         with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(results, f, ensure_ascii=False, indent=2) # indent=2 for human-readable formatting (remove for compact JSON) 
+            json.dump(results, f, ensure_ascii=False, indent=2)
         log.info(f"Retrieved {len(results)} records in {duration.total_seconds():.2f}s")
+
+        try:
+            # ===== HDFS STORAGE =====
+            log.info(f"Transferring to HDFS: {hdfs_dir}")
+            hdfs_manager.copy_from_local(str(output_file), f"{hdfs_dir}/{area.name}")
+        except Exception as e:
+            log.error(f"HDFS transfer failed: {str(e)}")
+            raise
 
     except Exception as e:
         log.error(f"API operation failed: {str(e)}")
         raise
     finally:
         client.close()
-
-    try:
-    # ===== HDFS STORAGE =====
-        log.info(f"Transferring to HDFS: {hdfs_dir}")
-        hdfs_manager.copy_from_local(str(tmp_dir), hdfs_dir)
-    except Exception as e:
-        log.error(f"HDFS transfer failed: {str(e)}")
-        raise

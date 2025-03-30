@@ -1,12 +1,11 @@
-from .air_quality_DL import load_data_air
-from .weather_DL import load_data_weather
+from airflow.operators.python import PythonOperator # type:ignore
 from .electricity_DL import load_data_electricity
 from .traffic_acc_DL import load_data_traffic_acc
+from .air_quality_DL import load_data_air
+from .weather_DL import load_data_weather
 
 from dags.utils import HDFSManager
-
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 
 # Initialize the Client that connect to NameNode of the launched HDFS
 hdfs_manager = HDFSManager()

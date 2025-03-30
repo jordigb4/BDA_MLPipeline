@@ -1,4 +1,5 @@
-from dags.utils.landing.class_types import WeatherStationId
+from dags.utils.landing_utils.class_types import WeatherStationId # type:ignore
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
@@ -17,19 +18,31 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def load_data_weather(hdfs_manager: HDFSManager,
-                      start_date: str,
-                      end_date: str):
-    """
-    Loads data from all three selected stations
-    """
-    
-    load_station_data(WeatherStationId.LONG_BEACH, start_date, end_date, hdfs_manager)
-    load_station_data(WeatherStationId.DOWNTOWN, start_date, end_date, hdfs_manager)
-    load_station_data(WeatherStationId.RESEDA, start_date, end_date, hdfs_manager)
+def load_data_weather(hdfs_manager: HDFSManager, start_date: str, end_date: str):
 
-    # Clear temporal files of previous data collections
-    subprocess.run(["rm", "-rf", '/tmp/weather/'], check=True)
+    try:
+        stations = [WeatherStationId.LONG_BEACH, WeatherStationId.DOWNTOWN, WeatherStationId.RESEDA]
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # Track futures explicitly
+            futures = {
+                executor.submit(
+                    load_station_data,
+                    station, start_date, end_date, hdfs_manager
+                ): station for station in stations
+            }
+            
+            # Properly handle completion and exceptions
+            for future in as_completed(futures):
+                station = futures[future]
+                try:
+                    future.result()  # Raises exceptions if any occurred
+                except Exception as e:
+                    log.error(f"Station {station} failed: {str(e)}")
+                    raise
+    finally:
+        # Cleanup only after ALL tasks complete
+        subprocess.run(["rm", "-rf", '/tmp/weather/'], check=True)
+        inspect_hdfs_structure(hdfs_manager, '/data')
 
 
 def load_station_data(station_id: WeatherStationId,
@@ -66,7 +79,7 @@ def load_station_data(station_id: WeatherStationId,
     hdfs_dir = "/data/landing/weather"
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    output_file = tmp_dir / f"{start_date.replace('-', '')}_{end_date.replace('-', '')}.parquet"
+    output_file = tmp_dir / f"{start_date}_{end_date}.parquet"
 
     # ===== DUCKDB S3 QUERY =====
     try:
@@ -122,4 +135,28 @@ def load_station_data(station_id: WeatherStationId,
         log.error(f"HDFS transfer failed: {str(e)}")
         raise
 
-        
+def inspect_hdfs_structure(hdfs_manager, path, indent=""):
+    """
+    Recursively inspect HDFS starting at `path` and print out directories and file names.
+    """
+    try:
+        items = hdfs_manager.list_files(path)
+    except Exception as e:
+        print(f"Error listing {path}: {e}")
+        return
+
+    print(f"{indent}{path}/")
+    for item in items:
+        item_path = os.path.join(path, item)
+        # Using the underlying client's status method to check if this is a directory.
+        try:
+            status = hdfs_manager._client.status(item_path, strict=False)
+        except Exception as e:
+            print(f"Error getting status of {item_path}: {e}")
+            continue
+
+        # Check if the item is a directory (the status dict usually has a 'type' key).
+        if status and status.get('type') == 'DIRECTORY':
+            inspect_hdfs_structure(hdfs_manager, item_path, indent + "    ")
+        else:
+            print(f"{indent}    {item}")

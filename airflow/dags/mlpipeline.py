@@ -33,5 +33,4 @@ with DAG(
     # Quality tasks
     quality_weather = quality_tasks.create_tasks(dag)
 
-
     [ingest_weather >> format_weather >> quality_weather,ingest_traffic,ingest_air,ingest_electricity]

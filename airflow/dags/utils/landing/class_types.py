@@ -20,5 +20,5 @@ class AirStationId(Enum):
 # Enum class to store the identifiers of the reporting traffic accident areas
 class TrafficAccId(Enum):
     LONG_BEACH = "Harbor"
-    DOWNTOWN = 'Central'
-    RESEDA = 'West Valley'
+    DOWNTOWN = "Central"
+    RESEDA = "West Valley"

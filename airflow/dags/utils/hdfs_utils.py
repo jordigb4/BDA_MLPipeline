@@ -35,7 +35,7 @@ class HDFSManager:
         """Upload file from local system to HDFS"""
 
         self.mkdirs(hdfs_path)
-        result = self._client.upload(hdfs_path, local_path, overwrite=overwrite, n_threads=5)
+        result = self._client.upload(hdfs_path, local_path, overwrite=overwrite)
         return result
 
     def copy_to_local(self, hdfs_path, local_path, overwrite=True):
