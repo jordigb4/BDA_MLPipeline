@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from airflow import DAG
-import utils.landing_utils as landing_tasks
-import utils.formatting_utils as formatting_tasks
+import utils.landing as landing_tasks
+import utils.formatting as formatting_tasks
 
 load_dotenv(dotenv_path='/opt/airflow/.env')
 
@@ -20,7 +20,7 @@ with DAG(
     default_args=default_args,
     schedule_interval='@daily',
     catchup=False,
-    tags=['data_processing'],
+    tags=['mlpipeline'],
     default_view='graph',  # Default DAG display view
 ) as dag:
 
