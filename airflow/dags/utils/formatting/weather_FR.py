@@ -1,7 +1,7 @@
 import logging
 import os
 
-from dags.utils.landing_utils.class_types import WeatherStationId
+from dags.utils.landing_utils.class_types import WeatherStationId # type:ignore
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 

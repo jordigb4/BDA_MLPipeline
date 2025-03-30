@@ -1,6 +1,6 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator # type:ignore
-from .weather_QL import quality_data
+from .weather_QL import quality_data # type:ignore
 
 def create_tasks(dag):
 
