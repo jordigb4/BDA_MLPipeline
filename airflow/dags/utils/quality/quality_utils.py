@@ -1,7 +1,7 @@
-from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
 from pyspark.sql.types import NumericType
+from pyspark.sql.window import Window
+
 
 def interpolate_missing(df):
     """Impute missing values using linear interpolation for numeric columns."""
@@ -45,6 +45,7 @@ def interpolate_missing(df):
         df = df.withColumn(column, interpolated)
 
     return df
+
 
 def compute_column_completeness(df):
     """Calculate the ratio of missing values for each column in the DataFrame."""

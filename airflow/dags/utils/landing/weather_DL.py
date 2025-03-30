@@ -1,4 +1,4 @@
-from dags.utils.landing_utils.class_types import WeatherStationId
+from dags.utils.landing.class_types import WeatherStationId
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
