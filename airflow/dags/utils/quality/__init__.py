@@ -1,4 +1,4 @@
-from airflow.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator # type:ignore
 from dags.utils.postgres_utils import PostgresManager
 
 from .weather_QL import quality_weather
