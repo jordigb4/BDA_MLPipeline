@@ -35,7 +35,7 @@ services:
     networks:
       - bdanet
     ports:
-      - "50070:50070"
+      - "49000:50070"
       - "8020:8020"
 
 

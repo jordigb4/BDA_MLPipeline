@@ -1,1 +1,0 @@
-CREATE DATABASE weatherdb OWNER airflow;

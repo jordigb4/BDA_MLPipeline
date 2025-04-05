@@ -46,30 +46,26 @@ def load_data_air(hdfs_manager: HDFSManager, start_date: str, end_date: str):
     """
 
     # Create base temp directory if it doesn't exist
-    tmp_base_dir = Path('/tmp/traffic_acc')
+    tmp_base_dir = Path('/tmp/air_quality')
     tmp_base_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        stations = [AirStationId.LONG_BEACH, AirStationId.DOWNTOWN, AirStationId.RESEDA]
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            # Track futures explicitly
-            futures = {
-                executor.submit(
-                    load_station_data,
-                    station, start_date, end_date, hdfs_manager
-                ): station for station in stations}
-            
-            # Properly handle completion and exceptions
-            for future in as_completed(futures):
-                station = futures[future]
-                try:
-                    future.result()  # Raises exceptions if any occurred
-                except Exception as e:
-                    log.error(f"Station {station} failed: {str(e)}")
-                    raise
-    finally:
-        # Cleanup only after ALL tasks complete
-        subprocess.run(["rm", "-rf", '/tmp/air_quality/'], check=True)
+    
+    stations = [AirStationId.LONG_BEACH, AirStationId.DOWNTOWN, AirStationId.RESEDA]
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        # Track futures explicitly
+        futures = {
+            executor.submit(
+                load_station_data,
+                station, start_date, end_date, hdfs_manager
+            ): station for station in stations}
+        
+        # Properly handle completion and exceptions
+        for future in as_completed(futures):
+            station = futures[future]
+            try:
+                future.result()  # Raises exceptions if any occurred
+            except Exception as e:
+                log.error(f"Station {station} failed: {str(e)}")
+                raise
 
 
 def load_station_data(station_id: AirStationId, 
@@ -136,6 +132,7 @@ def load_station_data(station_id: AirStationId,
             # Handle results
             if "No files or objects found" in result.stderr:
                 log.warning(f"No files found for {station_id} {year}")
+                continue # Skip to next year
             else:
                 num_files = result.stdout.count("download:")
                 log.info(f"Retrieved {num_files} files for year {year_str} in {(datetime.now()-start_time).total_seconds():.2f}s")

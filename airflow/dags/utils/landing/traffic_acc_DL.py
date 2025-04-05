@@ -30,15 +30,12 @@ def load_data_traffic_acc(hdfs_manager: HDFSManager,
     """
     Loads data from all three selected stations
     """
-    try:
-        # Process each area one by one
-        load_area_data(TrafficAccId.LONG_BEACH, start_date, end_date, hdfs_manager)
-        load_area_data(TrafficAccId.DOWNTOWN, start_date, end_date, hdfs_manager)
-        load_area_data(TrafficAccId.RESEDA, start_date, end_date, hdfs_manager)
-    finally:
-        # Clean up temporary files after ALL areas have been processed
-        subprocess.run(["rm", "-rf", '/tmp/traffic_acc/'], check=True)
-
+    
+    # Process each area one by one
+    load_area_data(TrafficAccId.LONG_BEACH, start_date, end_date, hdfs_manager)
+    load_area_data(TrafficAccId.DOWNTOWN, start_date, end_date, hdfs_manager)
+    load_area_data(TrafficAccId.RESEDA, start_date, end_date, hdfs_manager)
+    
 
 def load_area_data(area: TrafficAccId, 
                           start_date: str, 
@@ -60,10 +57,6 @@ def load_area_data(area: TrafficAccId,
     # ==== PATH CONFIGURATION ====
     tmp_dir = Path(f'/tmp/traffic_acc/{area.name}')
     hdfs_dir = "/data/landing/traffic_acc"
-
-    # Ensure the directory exists
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    output_file = tmp_dir / f"{start_date}_{end_date}.json"
 
     # ===== API CONNECTION =====
     client = Socrata(
@@ -90,6 +83,10 @@ def load_area_data(area: TrafficAccId,
             return
 
         # ===== LOCAL STORAGE =====
+        # Ensure the directory exists
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        output_file = tmp_dir / f"{start_date}_{end_date}.json"
+        
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         log.info(f"Retrieved {len(results)} records in {duration.total_seconds():.2f}s")
