@@ -1,4 +1,4 @@
-from dags.utils.hdfs_utils import HDFSManager
+#from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
 import requests
@@ -7,6 +7,8 @@ import json
 import os
 import pandas as pd
 
+os.environ['API_KEY_ELECTRICITY'] = 'QaQfVtyl0eLAi55ZcvMgTcf0eyNASZsGTlBuUsUS'
+os.environ['API_DOMAIN_ELECTRICITY'] = 'https://api.eia.gov/v2/electricity/rto/daily-region-data/data/'
 
 
 # Configure logging
@@ -20,8 +22,8 @@ log = logging.getLogger(__name__)
 
 
 def load_data_electricity(start_date: str,
-                          end_date: str,
-                         hdfs_manager: HDFSManager):
+                          end_date: str,):
+    #                      hdfs_manager: HDFSManager):
     """
     Electricity data loader with API integration and HDFS storage
     
@@ -46,9 +48,10 @@ def load_data_electricity(start_date: str,
 
     # ===== PATH CONFIGURATION =====
     tmp_dir = Path("/tmp/electricity")
-    hdfs_dir = "/data/landing/electricity"
+    #hdfs_dir = "/data/landing/electricity"
 
-    
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     output_file = tmp_dir / f"{clean_start}_{clean_end}.json"
 
     # ===== API CONFIGURATION =====
@@ -77,7 +80,7 @@ def load_data_electricity(start_date: str,
         }
 
         try:   
-            response = requests.get(base_url, params=params, timeout=30) 
+            response = requests.get(base_url, params=params, timeout=30) #prevent hanging requests with timeout
 
             if response.status_code != 200:
                 log.error(f"API request failed: {response.status_code} - {response.text[:200]}")
@@ -123,12 +126,13 @@ def load_data_electricity(start_date: str,
         log.error(f"Failed to save data to {output_file}: {e}")
         raise
     
-    # ===== HDFS STORAGE =====
+    """# ===== HDFS STORAGE =====
     try:
         log.info(f"Transferring to HDFS: {hdfs_dir}")
         hdfs_manager.copy_from_local(output_file, hdfs_dir)
     except Exception as e:
         log.error(f"HDFS transfer failed: {str(e)}")
-        raise
+        raise"""
     
 
+load_data_electricity("2019-01-01", "2024-03-31")
