@@ -1,11 +1,9 @@
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 from dags.utils.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
-from pyspark.sql.types import DoubleType
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
 from io import BytesIO
-from enum import Enum
 import subprocess
 import logging
 import tarfile
@@ -52,7 +50,8 @@ def format_station_air(landing_path: str, table_name: str, postgres_manager: Pos
             .appName("AirQualityFormatter") \
             .getOrCreate()
 
-        # Read all tar.gz files as binary streams
+        # 0. Read Data from HDFS (read tar.gz files as binary streams)
+        # ======================
         tar_gz_rdd = spark.sparkContext.binaryFiles(landing_path + "/*.tar.gz")
 
         # Process files in parallel and create DataFrame
@@ -68,20 +67,23 @@ def format_station_air(landing_path: str, table_name: str, postgres_manager: Pos
                     # iterates through the tar's files, which are all gzipped CSV
                     for member in tar.getmembers():
                         with tar.extractfile(member) as f:
-                            with gzip.open(f, 'rt') as gz_file:
+                            # Uniform text encoding -> utf-8
+                            with gzip.open(f, 'rt', encoding="utf-8") as gz_file:
                                 # Decompress gzip and map variable: value in a dict
-                                reader = csv.DictReader(gz_file, delimiter=",")
+                                reader = csv.DictReader(gz_file, delimiter=",", escapechar="\\")
                                 for row in reader:
                                     # Remove leading and trailing whitespaces -> consistency
                                     yield {k: v.strip() for k, v in row.items()}
             except Exception as e:
                 log.warning(f"Error processing file: {e}")
                 return iter([])
-            
+        
+        # 1. Create dataframe from RDD and schema
+        # =======================================
         rows_rdd = tar_gz_rdd.flatMap(lambda x: process_tar_file(x[1]))
         log.info(rows_rdd.take(5))
 
-        # Define schema
+        # Define reading schema
         schema = StructType([
                     StructField("location_id", StringType(), nullable=False),
                     StructField("sensors_id", StringType(), nullable=True),
@@ -93,53 +95,52 @@ def format_station_air(landing_path: str, table_name: str, postgres_manager: Pos
                     StructField("units", StringType(), nullable=True),
                     StructField("value", StringType(), nullable=False)
                 ])
-
-        # 0. Create dataframe from RDD and schema
-        # ====================
+        
         df = spark.createDataFrame(rows_rdd, schema=schema)
 
-        # 1. Variable Encoding 
-        # ====================
-        # Convert all column names to snake_case
+        # 2. Variable Formatting 
+        # ======================
         def camel_to_snake(name):
             # Insert underscores before capital letters, then lowercase
             return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
         
+        # Variable therminology formatting ->  convert to snake_case
         df = df.toDF(*[camel_to_snake(c) for c in df.columns])
 
-        # === NUMERICAL CASTING ===
+        # Data types conversion: to numerical
         df = (df
             .withColumn("lat", F.col("lat").cast(DoubleType()))
             .withColumn("lon", F.col("lon").cast(DoubleType()))
             .withColumn("value", F.col("value").cast(DoubleType()))
             )
 
-        # 2. Value Encoding
-        # ====================
+        # 3. Value Formatting
+        # ===================
 
-        # Standarize dates (ISO 8601)
+        # Date formats: standarize to ISO 8601
+        # Time Xone Alignement: UTC -> already in the data!
         df = df.withColumn("datetime_iso", F.to_timestamp("datetime", "yyyy-MM-dd'T'HH:mm:ssXXX"))
-        df = df.drop("datetime")  #Remove original column
+        df = df.drop("datetime")
         # Result:
-        # 04/04/2025 9:00:00 -> 2025-04-04T09:00:00Z
+        # 04/04/2025 9:00:00 -> 2025-04-04T09:00:00XXX
 
         # Homogenize null indicators
         poss_nulls = ["NA", "N/A", "null", "", " "]
         df = df.na.replace(poss_nulls, None)
 
-        # Non-null constraints
+        # Check non-null constraints
         df = df.filter(
             F.col("datetime_iso").isNotNull() &
             F.col("parameter").isNotNull() &
             F.col("value").isNotNull()
         )
         
-        # 3. Rows Selection
-        # ====================
-        df = df.dropDuplicates(["datetime_iso", "parameter"]) 
-        
-        # 4. PIVOT TO ADD COLUMN FOR EACH ELEMENT
+        # 4. Format DataFrame Structure
+        # =============================
+
+        # Pivot to add a column for each parameter
         pivoted_df = df.groupBy(["datetime_iso", "location", "lat", "lon"]).pivot("parameter").agg(F.first("value"))
+        # Order instances chronologically
         pivoted_df = pivoted_df.orderBy("datetime_iso", ascending=True)
 
         logging.info("Final Schema:")
@@ -147,8 +148,9 @@ def format_station_air(landing_path: str, table_name: str, postgres_manager: Pos
         logging.info("\nSample Data:")
         pivoted_df.show(5, truncate=False)
 
-        # 5. Write to Postgres
-        postgres_manager.write_dataframe(df, table_name)
+        # 5. Write to PostgreSQL
+        # =============================
+        postgres_manager.write_dataframe(pivoted_df, table_name)
         
     except Exception as e:
         log.error(f"Fatal pipeline error: {str(e)}", exc_info=True)
