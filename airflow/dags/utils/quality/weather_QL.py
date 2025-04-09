@@ -3,7 +3,7 @@ import os
 
 from dags.utils.landing.class_types import WeatherStationId
 from dags.utils.postgres_utils import PostgresManager
-from dags.utils.quality.quality_utils import interpolate_missing, compute_column_completeness, compute_row_completeness
+from dags.utils.quality.quality_utils import *
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
@@ -60,7 +60,7 @@ def quality_station_weather(input_table: str, output_table: str, postgres_manage
     logging.info("Missing ratios per column after interpolation:")
     column_completeness_df.show(truncate=False)
 
-    row_completeness_ratio = compute_row_completeness(interpolated_df)
+    row_completeness_ratio = compute_relation_completeness(interpolated_df)
     logging.info(f"\nRatio of rows with no missings after interpolation: {row_completeness_ratio:.4f}")
 
     # Write dataframe

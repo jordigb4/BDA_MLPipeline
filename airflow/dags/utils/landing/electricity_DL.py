@@ -1,13 +1,10 @@
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
+import pandas as pd
 import requests
 import logging
-import json
 import os
-import pandas as pd
-
-
 
 # Configure logging
 logging.basicConfig(
@@ -47,9 +44,10 @@ def load_data_electricity(start_date: str,
     # ===== PATH CONFIGURATION =====
     tmp_dir = Path("/tmp/electricity")
     hdfs_dir = "/data/landing/electricity"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
     
-    output_file = tmp_dir / f"{clean_start}_{clean_end}.json"
+    output_file = tmp_dir / f"{clean_start}_{clean_end}.parquet"
 
     # ===== API CONFIGURATION =====
     api_key = os.getenv('API_KEY_ELECTRICITY')
