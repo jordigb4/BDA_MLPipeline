@@ -1,22 +1,16 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dags.landing.class_types import AirStationId
+from dags.utils.other_utils import setup_logging
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
 import subprocess
 import tarfile
-import logging
 import time
 import os
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S'
-)
-
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 # Resilient S3 Sync Function
 def aws_s3_sync(cmd, max_retries=3, retry_delay=2):

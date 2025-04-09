@@ -1,20 +1,15 @@
-import logging
-import os
 
+import os
+from dags.utils.other_utils import setup_logging
 from dags.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
 from dags.quality.quality_utils import *
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, # minimum logging level
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S'
-)
+
 # Create a module-specific logger
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 def quality_air(postgres_manager: PostgresManager):
     """

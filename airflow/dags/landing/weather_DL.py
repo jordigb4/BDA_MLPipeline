@@ -1,5 +1,6 @@
-from dags.landing.class_types import WeatherStationId
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dags.landing.class_types import WeatherStationId
+from dags.utils.other_utils import setup_logging
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from pathlib import Path
@@ -8,14 +9,8 @@ import logging
 import duckdb
 import os
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, # minimum logging level
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S')
-
 # Create a module-specific logger
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 
 def load_data_weather(hdfs_manager: HDFSManager, start_date: str, end_date: str):

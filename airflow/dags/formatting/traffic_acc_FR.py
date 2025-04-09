@@ -1,21 +1,15 @@
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
-from dags.landing.class_types import TrafficAccId
 from dags.utils.postgres_utils import PostgresManager
+from dags.landing.class_types import TrafficAccId
+from dags.utils.other_utils import setup_logging
 from pyspark.sql.types import DoubleType
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
 import subprocess
-import logging
 import os
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S'
-)
-
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 
 def format_traffic_acc(postgres_manager: PostgresManager):

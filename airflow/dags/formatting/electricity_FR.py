@@ -1,17 +1,12 @@
+from dags.utils.other_utils import setup_logging
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, DoubleType
 import os
-import logging
+
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,  # Minimum logging level
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S'
-)
-
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 def format_electricity_data_parquet(hdfs_manager):
     """

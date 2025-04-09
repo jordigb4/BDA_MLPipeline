@@ -1,11 +1,11 @@
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
-from dags.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
+from dags.landing.class_types import AirStationId
+from dags.utils.other_utils import setup_logging
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
 from io import BytesIO
 import subprocess
-import logging
 import tarfile
 import gzip
 import csv
@@ -13,13 +13,7 @@ import re
 import os
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d-%m-%Y %H:%M:%S'
-)
-
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 
 def format_air_quality(postgres_manager: PostgresManager):
@@ -143,9 +137,9 @@ def format_station_air(landing_path: str, table_name: str, postgres_manager: Pos
         # Order instances chronologically
         pivoted_df = pivoted_df.orderBy("datetime_iso", ascending=True)
 
-        logging.info("Final Schema:")
+        log.info("Final Schema:")
         pivoted_df.printSchema()
-        logging.info("\nSample Data:")
+        log.info("\nSample Data:")
         pivoted_df.show(5, truncate=False)
 
         # 5. Write to PostgreSQL
