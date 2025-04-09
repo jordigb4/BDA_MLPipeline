@@ -1,9 +1,9 @@
 import logging
 import os
 
-from dags.utils.landing.class_types import AirStationId
+from dags.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
-from dags.utils.quality.quality_utils import *
+from dags.quality.quality_utils import *
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
@@ -88,7 +88,7 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     print(f"\nRelation's Redundancy (ratio of duplicates): {Q_r:.4f}")
 
     # Redundancy: check for attributes with only one level
-    one_value_att = [att for att, value in results['unique_counts'] if value == 1]
+    one_value_att = [att for att, value in results['unique_counts'].items() if value == 1]
     if one_value_att:
         print(f"\nAttributes with only one value: {', '.join(one_value_att)}")
     else:

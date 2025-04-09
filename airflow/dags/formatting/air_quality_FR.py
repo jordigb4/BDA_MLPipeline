@@ -1,5 +1,5 @@
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
-from dags.utils.landing.class_types import AirStationId
+from dags.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession

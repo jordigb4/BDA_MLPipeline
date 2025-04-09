@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from airflow import DAG
-import utils.landing as landing_tasks
-import utils.formatting as formatting_tasks
-import utils.quality as quality_tasks
+import landing as landing_tasks
+import formatting as formatting_tasks
+import quality as quality_tasks
 load_dotenv(dotenv_path='/opt/airflow/.env')
 
 default_args = {

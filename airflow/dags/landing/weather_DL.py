@@ -1,4 +1,4 @@
-from dags.utils.landing.class_types import WeatherStationId
+from dags.landing.class_types import WeatherStationId
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime

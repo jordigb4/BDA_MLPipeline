@@ -1,9 +1,9 @@
 import logging
 import os
 
-from dags.utils.landing.class_types import WeatherStationId
+from dags.landing.class_types import WeatherStationId
 from dags.utils.postgres_utils import PostgresManager
-from dags.utils.quality.quality_utils import *
+from dags.quality.quality_utils import *
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 

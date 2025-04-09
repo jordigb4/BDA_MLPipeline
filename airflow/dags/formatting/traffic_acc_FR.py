@@ -1,5 +1,5 @@
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
-from dags.utils.landing.class_types import TrafficAccId
+from dags.landing.class_types import TrafficAccId
 from dags.utils.postgres_utils import PostgresManager
 from pyspark.sql.types import DoubleType
 from pyspark.sql import functions as F

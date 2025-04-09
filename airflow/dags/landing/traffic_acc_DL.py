@@ -1,4 +1,4 @@
-from dags.utils.landing.class_types import TrafficAccId
+from dags.landing.class_types import TrafficAccId
 from dags.utils.hdfs_utils import HDFSManager
 from datetime import datetime
 from sodapy import Socrata # type: ignore
