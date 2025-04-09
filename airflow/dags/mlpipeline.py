@@ -28,7 +28,7 @@ with DAG(
     ingest_weather, ingest_traffic, ingest_air, ingest_electricity = landing_tasks.create_tasks(dag)
 
     # Formatting tasks
-    format_weather, format_air, format_traffic = formatting_tasks.create_tasks(dag)
+    format_weather, format_air, format_traffic, format_electricity = formatting_tasks.create_tasks(dag)
 
     # Quality tasks
     quality_weather, quality_air, quality_traffic = quality_tasks.create_tasks(dag)
@@ -36,4 +36,4 @@ with DAG(
     [ingest_weather >> format_weather >> quality_weather, 
     ingest_traffic >> format_traffic >> quality_traffic,
     ingest_air >> format_air >> quality_air,
-    ingest_electricity]
+    ingest_electricity >> format_electricity]

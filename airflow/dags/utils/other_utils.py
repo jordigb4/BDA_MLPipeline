@@ -11,5 +11,5 @@ def setup_logging(name):
         datefmt='%d-%m-%Y %H:%M:%S'
     )
 
-    log = logging.getLogger(__name__)
+    log = logging.getLogger(name)
     return log

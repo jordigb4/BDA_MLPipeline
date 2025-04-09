@@ -1,34 +1,44 @@
+from dags.utils.postgres_utils import PostgresManager
 from dags.utils.other_utils import setup_logging
-from pyspark.sql import SparkSession
+from pyspark.sql.types import DoubleType
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, DoubleType
+from pyspark.sql import SparkSession
+import subprocess
 import os
-
 
 # Configure logging
 log = setup_logging(__name__)
 
-def format_electricity_data_parquet(hdfs_manager):
+def format_electricity_data(postgres_manager: PostgresManager):
     """
-    Formats electricity data loaded from Parquet (LDWP and Pacific).
+    Formats electricity data loaded in HDFS w. Parquet format (LDWP and Pacific).
     """
+    spark = None
     try:
-        # Create a Spark session
+        # Clean up temporary files from previous stage
+        subprocess.run(["rm", "-rf", f'/tmp/electricity/'], check=True)
+
+        # Initialize Spark session
         spark = SparkSession.builder \
+            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("ElectricityDataFormatter") \
             .getOrCreate()
 
-        # Define the path for the Parquet file (adjust according to your environment)
-        parquet_path = "/data/landing/electricity/2019-01-01_2024-03-31.parquet"  # Replace with the actual path
+        # 0. Read Data from HDFS
+        # ======================
+        base_hdfs_path = f"{os.getenv('HDFS_FS_URL')}/data/landing/electricity/"
         
-        # Load Parquet data
-        df = spark.read.parquet(parquet_path)
+        # 1. Create dataframe from all Parquet files
+        # ==========================================
+        df = spark.read.parquet(base_hdfs_path)
         
         # Inspect schema of the original data
         log.info("Original Data Schema:")
         df.printSchema()
 
-        # Rename columns for consistency
+        # 2. Variable Formatting 
+        # ======================
+        # Variable therminology renaming for consistency 
         df = df.withColumnRenamed("period", "date") \
             .withColumnRenamed("respondent", "respondent_id") \
             .withColumnRenamed("respondent-name", "respondent_name") \
@@ -36,40 +46,39 @@ def format_electricity_data_parquet(hdfs_manager):
             .withColumnRenamed("timezone", "timezone_id") \
             .withColumnRenamed("value-units", "unit_of_measure")
 
-        # Convert 'date' column to DateType
+        # Data types conversion: 'date' column to DateType
         df = df.withColumn("date", F.to_date("date", "yyyy-MM-dd"))
 
-        # Create datetime_iso column
+        # Data types conversion: value to numerical
+        df = df.withColumn("value", F.col("value").cast(DoubleType()))
+
+        # Standarize to ISO 8601
         df = df.withColumn("datetime_iso", F.concat(
             F.col("date"), 
             F.lit(" 00:00")))
+        df = df.withColumn("datetime_iso", F.to_timestamp("datetime_iso", "yyyy-MM-dd HH:mm")) #'datetime_iso' to timestamp
 
-        # Convert string to timestamp
-        df = df.withColumn("datetime_iso", F.to_timestamp("datetime_iso", "yyyy-MM-dd HH:mm"))
-
-        # Format timestamp to ISO 8601
         df = df.withColumn("datetime_iso", F.date_format(
             F.col("datetime_iso"), "yyyy-MM-dd'T'HH:mm:ss'+00:00'"))
         
-        # Convert 'value' column to DoubleType
-        df = df.withColumn("value", F.col("value").cast(DoubleType()))
+        
+        # 3. Value Formatting
+        # ===================
+        # Categorical Value Mapping
+        # -------------------------
+        df = df.withColumn("unit_of_measure", F.when(F.col("unit_of_measure") == "megawatthours", "mwh") 
+                                            .otherwise(F.col("unit_of_measure"))) # "megawatthours" -> "mwh"
 
-        # Replace "megawatthours" with "mwh"
-        df = df.withColumn("unit_of_measure", F.when(F.col("unit_of_measure") == "megawatthours", "mwh")
-                                            .otherwise(F.col("unit_of_measure")))
-
-        # Identify string columns
+        # Identify and convert all string columns to lowercase
         string_cols = ['respondent_id', 'respondent_name', 'data_type', 'timezone_id', 'unit_of_measure']
-
-        # Convert all string columns to lowercase
         for col in string_cols:
             df = df.withColumn(col, F.lower(F.col(col)))
         
-        # Clean up string columns by replacing extra spaces with underscores
+        # # Trim all string columns and fix separate string values by replacing extra spaces with underscores
         for col in string_cols:
             df = df.withColumn(col, F.regexp_replace(F.trim(F.col(col)), r"\s+", "_"))
 
-        # Handle missing values by replacing known invalid entries with null
+        # Homogenize NA indicators
         na_values = ['', 'NA', 'N/A', 'NULL']
         for col in df.columns:
             df = df.withColumn(col, F.when(F.col(col).isin(na_values), None).otherwise(F.col(col)))
@@ -79,22 +88,16 @@ def format_electricity_data_parquet(hdfs_manager):
             corrupted_records = df.filter('_corrupt_record is not null')
             corrupted_records.show(truncate=False)
 
-        
-
-
-
-        # Show some cleaned data for inspection
-        log.info("Cleaned Data Sample:")
+        # Show cleaned data sample and schema
+        log.info("Final Schema:")
+        df.printSchema()
+        log.info("Sample Data:")
         df.show(5, truncate=False)
 
-        # Save the cleaned data to Parquet file
-        output_file = "/data/landing/electricity/formatted_data.parquet"
-        df.write.parquet(output_file, mode="overwrite")
-        log.info(f"Formatted data saved to {output_file}")
-
-        # 7. HDFS Storage
-        log.info("Transferring to HDFS...")
-        hdfs_manager.copy_from_local(output_file, "/data/landing/electricity")
+        # 4. Write to PostgreSQL
+        # =============================
+        postgres_manager.write_dataframe(df, table_name = "fmtted_electricity_data")
+        log.info("Data written to PostgreSQL successfully.")
 
     except Exception as e:
         log.error(f"Error during data formatting: {str(e)}", exc_info=True)

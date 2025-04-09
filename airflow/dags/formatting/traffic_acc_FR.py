@@ -28,7 +28,7 @@ def format_traffic_acc(postgres_manager: PostgresManager):
         format_area_acc(landing_path, table_name, postgres_manager)
 
 
-def format_area_acc(landing_path: str, table_name: str, postgres_manager):
+def format_area_acc(landing_path: str, table_name: str, postgres_manager: PostgresManager):
     """Main ETL function to format traffic accident data."""
     
     spark = None
