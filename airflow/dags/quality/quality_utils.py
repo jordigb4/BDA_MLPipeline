@@ -195,7 +195,7 @@ def detect_TS_outliers(df, outlier_df, col_name, window_size=7, timestamp_col="d
         F.col(f"rolling_Q3_{col_name}") - F.col(f"rolling_Q1_{col_name}")
     ).withColumn(
         f"rolling_upper_{col_name}", 
-        F.col(f"rolling_Q3_{col_name}") + F.lit(5) * F.col(f"rolling_IQR_{col_name}")
+        F.col(f"rolling_Q3_{col_name}") + F.lit(7.5) * F.col(f"rolling_IQR_{col_name}")
     )
     
     # Outlier flags
@@ -212,18 +212,18 @@ def detect_TS_outliers(df, outlier_df, col_name, window_size=7, timestamp_col="d
     return outlier_df.join(temp_outlier, [timestamp_col], "left")
 
 
-def interpolate_missing(df):
+def interpolate_missing(df, date_col: str = "DATE") -> DataFrame:
     """Impute missing values using linear interpolation for numeric columns."""
     # Ensure the DataFrame is sorted by DATE to maintain chronological order
-    df = df.orderBy("DATE")
+    df = df.orderBy(date_col)
 
     # Identify numeric columns (exclude DATE)
     numeric_cols = [col for col in df.columns
-                    if col != "DATE" and isinstance(df.schema[col].dataType, NumericType)]
+                    if col != date_col and isinstance(df.schema[col].dataType, NumericType)]
 
     for column in numeric_cols:
         # Define window ordered by DATE (spanning entire dataset)
-        window_spec = Window.orderBy("DATE")
+        window_spec = Window.orderBy(date_col)
 
         # Previous non-null value (last non-null before current row)
         prev_val = F.last(F.col(column), ignorenulls=True).over(

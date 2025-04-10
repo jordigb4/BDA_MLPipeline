@@ -1,13 +1,11 @@
-
-import os
-from dags.utils.other_utils import setup_logging
-from dags.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
-from functools import reduce
+from dags.landing.class_types import AirStationId
+from dags.utils.other_utils import setup_logging
 from dags.quality.quality_utils import *
-from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-
+from pyspark.sql import SparkSession
+from functools import reduce
+import os
 
 # Create a module-specific logger
 log = setup_logging(__name__)
@@ -62,11 +60,12 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     for row in Q_cm_Att.collect():
         missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
-        output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36} \n")
+        output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36}")
     
     # Completeness: for the whole dataset (rows with no missing values)
     Q_cm_rel = compute_relation_completeness(df)
     print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
+    print("\n".join(output_lines))
 
     # Timeliness: check if the data is up to date
     attribute_scores = 0
@@ -117,23 +116,23 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     # 5. PM pyhisical consistency
     if "pm10" in parameter_columns and "pm25" in parameter_columns:
-        DC["PM_cons"] = F.col("pm10") >= F.col("pm25")
+        DC["PM_cons"] = (F.col("pm10") >= F.col("pm25")) | F.col("pm10").isNull() | F.col("pm25").isNull()
 
     # 6-14. Realistic and expert thresholds for pollutants
     if "pm25" in parameter_columns:
-        DC["pm25_realistic"] = (F.col("pm25") < 250 | F.col("pm25").isNull()) # PM2.5 - Extreme: 250ug/m3
+        DC["pm25_realistic"] = (F.col("pm25") < 250) | F.col("pm25").isNull() # PM2.5 - Extreme: 250ug/m3
     if "pm10" in parameter_columns:
-        DC["pm10_realistic"] = (F.col("pm10") < 500 | F.col("pm10").isNull()) # PM10 - Extreme: 500ug/m3
+        DC["pm10_realistic"] = (F.col("pm10") < 500) | F.col("pm10").isNull() # PM10 - Extreme: 500ug/m3
     if "co" in parameter_columns:
-        DC["co_realistic"] = (F.col("co") < 50 | F.col("co").isNull())  # CO - Extreme: 50ppm
+        DC["co_realistic"] = (F.col("co") < 50 )| F.col("co").isNull()  # CO - Extreme: 50ppm
     if "no" in parameter_columns:
-        DC["no_realistic"] = (F.col("no") < 10 | F.col("no").isNull())  # NO - Extreme industrial areas
+        DC["no_realistic"] = (F.col("no") < 10) | F.col("no").isNull()  # NO - Extreme industrial areas
     if "no2" in parameter_columns:
-        DC["no2_realistic"] = (F.col("no2") < 1 | F.col("no2").isNull()) # NO₂ - 1ppm
+        DC["no2_realistic"] = (F.col("no2") < 1) | F.col("no2").isNull() # NO₂ - 1ppm
     if "nox" in parameter_columns:
-        DC["nox_realistic"] = (F.col("nox") < 2 | F.col("nox").isNull()) # NOx (NO + NO₂ combined)
+        DC["nox_realistic"] = (F.col("nox") < 2) | F.col("nox").isNull() # NOx (NO + NO₂ combined)
     if "o3" in parameter_columns:
-        DC["o3_realistic"] = (F.col("o3") < 0.2 | F.col("o3").isNull()) # O₃ - Extreme smog: 0.2ppm
+        DC["o3_realistic"] = (F.col("o3") < 0.2) | F.col("o3").isNull() # O₃ - Extreme smog: 0.2ppm
 
     # 15. NOx check ( = NO + NO₂)
     if all(col in parameter_columns for col in ["no", "no2", "nox"]):
@@ -213,21 +212,85 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     # 7. Improve the quality of the data
     #===================================
-    # Remove tuples: duplicates and (aggregation, that has been done with pivot function in formatting)
-    df = df.dropDuplicates(["datetime_iso"])
-    log.info(f"Duplicates removed: {n_rows - df.count()}")
 
-    # Remove attributes:
-    # ------------------
+    # Constraint Enforcing:
+    # ---------------------
+    log.info("Enforcing Denial Constraints")
 
-    # Low variance columns: this is metadata, separate it from data!
-    low_cardinality_cols = [(key, df.select(key).first()[0]) for key, count in results["unique_counts"] if count == 1]
-    log.info(f"Separate columns that are metadata: {','.join(low_cardinality_cols)}")
+    # pos_params: all parameters must be positive -> convert to null if negative
+    for col in parameter_columns:
+        df = df.withColumn(col, F.when(F.col(col) < 0, None).otherwise(F.col(col)))
 
-    # High null columns ()
-    log.info("Handling Missing Values")
+    # {paramet  er}_realistic: realistic thresholds must be respected -> convert to null if not
+    for DC_name, DC_expr in DC.items():
+        if DC_name.endswith("_realistic"):
+            # Extract parameter name from constraint name (e.g., "pm25" from "pm25_realistic")
+            param = DC_name.replace("_realistic", "")
+            df = df.withColumn(param, F.when(DC_expr, F.col(param)).otherwise(None))
+
+    # See: outliers are dealt with this step. Only impossible values are removed, but not extreme values !
+
+    # ordered_timestamps: chronological timestamps
+    df = df.orderBy("datetime_iso")
+
+    if "nox" in df.columns:
+        # Check NOx consistency (NO + NO₂) -> correct it if possible
+        sum_exp = F.col("no") + F.col("no2")
+        df = df.withColumn("nox", F.when(F.col("no").isNotNull() & F.col("no2").isNotNull(), sum_exp).otherwise(None))
+
+    # Remove tuples:
+    # --------------
+
+    # Duplicates and (aggregation, that has been done with pivot function in formatting)
+    df = df.dropDuplicates(["datetime_iso"]); n_rows_new = df.count()
+    log.info(f"Duplicates removed: {n_rows - n_rows_new}")
+
+    # Tuples with lots of missing values (i.e. more than 70% of parameters)
+    null_count = reduce(lambda a, b: a + b, [F.isnull(col).cast("int") for col in parameter_columns])
+    df = df.filter((null_count / len(parameter_columns)) < 0.7)
+    log.info(f"Rows with too many missing values removed: {n_rows_new - df.count()}")
     
-    # Outliers
+    # Remove attributes:    
+    # ------------------
+    # Low variance columns: this is metadata, separate it from data!
+    low_cardinality_cols = [f"{key}={df.select(key).first()[0]}" for key, count in results["unique_counts"].items() if count == 1]
+    log.info(f"Separate columns that are metadata: {', '.join(low_cardinality_cols)}")
+
+    # Remove columns with high missing values (i.e. > 50 %), imputation would be artificial!
+    null_counts = df.select([F.sum(F.col(c).isNull().cast("int")).alias(c) for c in df.columns]).collect()[0]
+    to_remove = [col for col in df.columns if (null_counts[col] / n_rows_new) > 0.5]
+
+    df = df.drop(*to_remove)
+    log.info(f"Columns with too many missing values removed: {', '.join(to_remove)}")
+
+
+    # Correct missing values:
+    # -----------------------
+    # Imputation with linear interpolation
+    df = interpolate_missing(df, date_col="datetime_iso")
+
+    # Report Final Completeness Metrics
+    Q_cm_Att = compute_column_completeness(df); output_lines = list()
+    output_lines.append("\nColumn completeness report:")
+    output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
+
+    for row in Q_cm_Att.collect():
+        missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
+        output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36}")
+    
+    Q_cm_rel = compute_relation_completeness(df)
+    print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
+    print("\n".join(output_lines))
+
+    # Sample of final data
+    print("\nSample of final data:")
+    print("\n".join(output_lines))
+    print(f"Enhanced data has {df.count()} rows and {len(df.columns)} columns.")
+
+    # Export df with enhanced quality to PostgreSQL
+    # =============================================
+    log.info("Exporting DataFrame to PostgreSQL")
+    postgres_manager.write_dataframe(df, output_table)
     
     if spark:
         spark.stop()
