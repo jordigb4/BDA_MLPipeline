@@ -113,15 +113,19 @@ def print_dataset_profile(results: dict) -> None:
 def compute_column_completeness(df):
     """Calculate the ratio of missing values for each column in the DataFrame."""
     total_rows = df.count()
+    spark = df.sparkSession
     if total_rows == 0:
-        return df.sql_ctx.createDataFrame([], schema=["column", "missing_ratio"])
-    # Calculate the number of nulls for each column
-    exprs = [F.sum(F.col(column).isNull().cast("int")).alias(column) for column in df.columns]
-    null_counts = df.agg(*exprs).first()
-    # Prepare the result as a list of tuples
-    stats = [(column, null_counts[column] / total_rows) for column in df.columns]
+        return spark.createDataFrame([], schema=["column", "missing_ratio"])
+    
+    stats = []
+    for column in df.columns:
+        null_count = df.select(
+            F.coalesce(F.sum(F.col(column).isNull().cast("int")), F.lit(0))
+        ).first()[0]
+        
+        stats.append((column, float(null_count / total_rows)))
+
     # Create a DataFrame from the results
-    spark = df.sql_ctx.sparkSession
     return spark.createDataFrame(stats, ["column", "missing_ratio"])
 
 
@@ -216,11 +220,11 @@ def interpolate_missing(df, date_col: str = "DATE") -> DataFrame:
     """Impute missing values using linear interpolation for numeric columns."""
     # Ensure the DataFrame is sorted by DATE to maintain chronological order
     df = df.orderBy(date_col)
-
+    
     # Identify numeric columns (exclude DATE)
     numeric_cols = [col for col in df.columns
                     if col != date_col and isinstance(df.schema[col].dataType, NumericType)]
-
+    
     for column in numeric_cols:
         # Define window ordered by DATE (spanning entire dataset)
         window_spec = Window.orderBy(date_col)
@@ -234,7 +238,7 @@ def interpolate_missing(df, date_col: str = "DATE") -> DataFrame:
         next_val = F.first(F.col(column), ignorenulls=True).over(
             window_spec.rowsBetween(1, Window.unboundedFollowing)
         )
-
+        
         # Compute interpolated value
         interpolated = F.when(
             F.col(column).isNull(),
@@ -254,6 +258,29 @@ def interpolate_missing(df, date_col: str = "DATE") -> DataFrame:
         df = df.withColumn(column, interpolated)
 
     return df
+
+def impute_with_mode(df):
+    """Impute missing values with mode for categorical columns only"""
+    
+    def compute_column_mode(df, column: str):
+        """Calculate mode with null handling"""
+        return df.groupBy(column).count().orderBy(F.desc("count")).limit(1).select(column).first()[0]
+    
+    # Identify categorical columns (StringType)
+    categorical_cols = [col for col, dtype in df.dtypes if dtype == 'string']
+    
+    # Calculate modes only for categorical columns
+    modes = {col: compute_column_mode(df, col) for col in categorical_cols}
+    
+    # Apply the imputation using the stored mode values
+    for column, mode in modes.items():
+        df = df.withColumn(
+            column, 
+            F.when(F.col(column).isNull(), mode).otherwise(F.col(column))
+        )
+    
+    return df
+
 
 def check_missing_dates(df: DataFrame, date_col: str = 'datetime_iso') -> dict:
     """

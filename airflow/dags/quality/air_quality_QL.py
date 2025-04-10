@@ -208,7 +208,7 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     param_stats["Outlier_Pct"] = (param_stats["Total_Outliers"] / total_rows * 100).round(2)
 
     print("Outliers by Parameter:")
-    print(param_stats.sort_values("Total_Outliers", ascending=False).to_string())
+    print(f"\n{param_stats.sort_values('Total_Outliers', ascending=False).to_string()}")
 
     # 7. Improve the quality of the data
     #===================================
@@ -263,35 +263,41 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     df = df.drop(*to_remove)
     log.info(f"Columns with too many missing values removed: {', '.join(to_remove)}")
 
-
     # Correct missing values:
     # -----------------------
     # Imputation with linear interpolation
-    df = interpolate_missing(df, date_col="datetime_iso")
+    df_clean = interpolate_missing(df, date_col="datetime_iso")
 
-    # Report Final Completeness Metrics
-    Q_cm_Att = compute_column_completeness(df); output_lines = list()
-    output_lines.append("\nColumn completeness report:")
-    output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
-
-    for row in Q_cm_Att.collect():
-        missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
-        output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36}")
-    
-    Q_cm_rel = compute_relation_completeness(df)
-    print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
-    print("\n".join(output_lines))
+    # Report Final Completeness Metric
+    #Q_cm_rel = compute_relation_completeness(df_clean)
+    #print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
 
     # Sample of final data
     print("\nSample of final data:")
-    print("\n".join(output_lines))
-    print(f"Enhanced data has {df.count()} rows and {len(df.columns)} columns.")
+    df_clean.show(5)
+    print(f"Enhanced data has {df_clean.count()} rows and {len(df_clean.columns)} columns.")
 
     # Export df with enhanced quality to PostgreSQL
     # =============================================
     log.info("Exporting DataFrame to PostgreSQL")
-    postgres_manager.write_dataframe(df, output_table)
+    postgres_manager.write_dataframe(df_clean, output_table)
     
+    def null_summary(df):
+        """Return null counts and percentages for all columns"""
+        total_rows = df.count()
+        return {
+            col: {
+                "null_count": df.filter(F.col(col).isNull()).count(),
+                "null_pct": round(df.filter(F.col(col).isNull()).count() / total_rows * 100, 2)
+            }
+            for col in df.columns
+        }
+
+    # Usage
+    summary = null_summary(df_clean)
+    for col, stats in summary.items():
+        print(f"{col}: {stats['null_count']} nulls ({stats['null_pct']}%)")
+        
     if spark:
         spark.stop()
         log.info("Spark session closed")
