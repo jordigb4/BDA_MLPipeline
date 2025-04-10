@@ -3,6 +3,7 @@ import os
 from dags.utils.other_utils import setup_logging
 from dags.landing.class_types import AirStationId
 from dags.utils.postgres_utils import PostgresManager
+from functools import reduce
 from dags.quality.quality_utils import *
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -40,6 +41,7 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     # 1. Read the table from PostgreSQL
     # =================================
     df = postgres_manager.read_table(spark, input_table)
+    df.show(5)
 
     # 2. Generate Data Profiles (descriptive statistics)
     # =========================
@@ -54,14 +56,13 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     log.info("Computing Data Quality Metrics")
     
     # Completeness: non-missing ratios per attribute
-    Q_cm_Att = compute_column_completeness(df)
-    print("\nColumn completeness report:")
-    print("-" * 36); print(f"{'Column':<25} | {'Missing (%)':>10}"); print("-" * 36)
+    Q_cm_Att = compute_column_completeness(df); output_lines = list()
+    output_lines.append("\nColumn completeness report:")
+    output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
 
     for row in Q_cm_Att.collect():
         missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
-        print(f"{row['column']:<25} | {missing_pct:>10}")
-        print("-" * 36 + "\n")
+        output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36} \n")
     
     # Completeness: for the whole dataset (rows with no missing values)
     Q_cm_rel = compute_relation_completeness(df)
@@ -80,6 +81,7 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     # Redundancy: check for duplicate rows
     Q_r = df.count() / df.dropDuplicates(["datetime_iso"]).count()
+    print(df.count(), df.dropDuplicates(["datetime_iso"]).count())
     print(f"\nRelation's Redundancy (ratio of duplicates): {Q_r:.4f}")
 
     # Redundancy: check for attributes with only one level
@@ -93,46 +95,140 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     # 4. Denial Constraints Definition 
     #=================================
+    # Available parameters in dataset
     parameter_columns = set(results["numeric_columns"]) - set(["lat", "lon"])
-    DC = {
-        # All air quality parameters must be positive
-        "pos_params": f"({', '.join(parameter_columns)}) >= 0",
-        
-        "valid_lat": (F.col("lat") >= -90) & (F.col("lat") <= 90), # Latitude range (-90 to 90)
-        "valid_lon": (F.col("lon") >= -180) & (F.col("lon") <= 180), # Longitude range (-180 to 180)
+    DC = {}
 
-        "ordered_timestamps": F.col("datetime_iso") > F.lag("datetime_iso").over(
-            Window.partitionBy("location").orderBy("datetime_iso")), # Chronological timestamps
+    # 1. All parameters must be positive
+    pos_conditions = [F.col(c) >= 0 for c in parameter_columns]
+    DC["pos_params"] = reduce(lambda a, b: a & b, pos_conditions)
 
-        "PM_cons": F.col("pm10") >= F.col("pm25"), # physical consistency
+    # 2. Check latitude constraint
+    if "lat" in df.columns:
+        DC["valid_lat"] = (F.col("lat") >= -90) & (F.col("lat") <= 90)
 
-        # PM constraints (µg/m³): expert knowledge based
-        "pm25_realistic": F.col("pm25") < 250,  # Extreme pollution threshold
-        "pm10_realistic": F.col("pm10") < 500,  # Extreme pollution threshold
+    # 3. Check longitude constraint
+    if "lon" in df.columns:
+        DC["valid_lon"] = (F.col("lon") >= -180) & (F.col("lon") <= 180)
 
-        # Gaseous pollutants (ppm)
-        "co_realistic": F.col("co") < 50,       # CO - Extreme: 50ppm
-        "no_realistic": F.col("no") < 10,       # NO - Extreme industrial areas
-        "no2_realistic": F.col("no2") < 1,      # NO₂ - 1ppm
-        "nox_realistic": F.col("nox") < 2,      # NOx (NO + NO₂ combined)
-        "o3_realistic": F.col("o3") < 0.2,      # O₃ - Extreme smog: 0.2ppm
+    # 4. # Chronological timestamps
+    window = Window.partitionBy("location").orderBy("datetime_iso")
+    DC["ordered_timestamps"] = F.col("datetime_iso") > F.lag("datetime_iso").over(window)
 
-        # NOx = NO + NO2 (when all components are present)
-        "check_NOx": (
+    # 5. PM pyhisical consistency
+    if "pm10" in parameter_columns and "pm25" in parameter_columns:
+        DC["PM_cons"] = F.col("pm10") >= F.col("pm25")
+
+    # 6-14. Realistic and expert thresholds for pollutants
+    if "pm25" in parameter_columns:
+        DC["pm25_realistic"] = (F.col("pm25") < 250 | F.col("pm25").isNull()) # PM2.5 - Extreme: 250ug/m3
+    if "pm10" in parameter_columns:
+        DC["pm10_realistic"] = (F.col("pm10") < 500 | F.col("pm10").isNull()) # PM10 - Extreme: 500ug/m3
+    if "co" in parameter_columns:
+        DC["co_realistic"] = (F.col("co") < 50 | F.col("co").isNull())  # CO - Extreme: 50ppm
+    if "no" in parameter_columns:
+        DC["no_realistic"] = (F.col("no") < 10 | F.col("no").isNull())  # NO - Extreme industrial areas
+    if "no2" in parameter_columns:
+        DC["no2_realistic"] = (F.col("no2") < 1 | F.col("no2").isNull()) # NO₂ - 1ppm
+    if "nox" in parameter_columns:
+        DC["nox_realistic"] = (F.col("nox") < 2 | F.col("nox").isNull()) # NOx (NO + NO₂ combined)
+    if "o3" in parameter_columns:
+        DC["o3_realistic"] = (F.col("o3") < 0.2 | F.col("o3").isNull()) # O₃ - Extreme smog: 0.2ppm
+
+    # 15. NOx check ( = NO + NO₂)
+    if all(col in parameter_columns for col in ["no", "no2", "nox"]):
+        DC["check_NOx"] = (
             (F.col("no").isNull()  | 
              F.col("no2").isNull() | 
              F.col("nox").isNull())| 
-            (F.abs(F.col("nox") - (F.col("no") + F.col("no2"))) < 0.001)),
+            (F.abs(F.col("nox") - (F.col("no") + F.col("no2"))) < 0.001))
 
-        # Mandatory one parameter value per timestamp
-        "non_null_row": F.reduce(lambda a, b: a | b,
-                        [F.col(c).isNotNull() for c in parameter_columns])
-    }
-    print(DC)
-    # 4. Apply the denial constraints
+    # 16. Ensure at least one parameter is non-null
+    DC["non_null_row"] = reduce(
+            lambda a, b: a | b, 
+            [F.col(c).isNotNull() for c in parameter_columns])
+    
+    # Visualize the dict of constraints
+    print("\n" + "\n".join(
+    ["Denial Constraints:", '-' * 40] +
+    [f"{name}: {constraint}" for name, constraint in DC.items()]))
+
+    # 5. Apply the denial constraints
     #================================
     log.info("Applying Denial Constraints")
 
+    # Create a new dataframe for constraint checking
+    check_df = df.select('*')
+    n_rows = check_df.count()
+
+    # Add constraint check columns to the new dataframe
+    for constraint_name, constraint in DC.items():
+        check_df = check_df.withColumn(f"check_{constraint_name}", constraint)
+
+    # Combine all constraints into a single "all_valid" column
+    all_rules_check = [f"check_{name}" for name in DC.keys()]
+    check_df = check_df.withColumn("all_rules_check", F.expr(" AND ".join(all_rules_check)))
+
+    # Consistency: proportion of rows that satisfy all constraints
+    Q_cn = check_df.filter(F.col("all_rules_check")).count() / n_rows
+    print(f"\nRelation's Consistency: {Q_cn:.4f}")
+
+    # Compute per-constraint statistics
+    constraint_stats = {}; print('-' * 40)
+    for constraint_name in DC.keys():
+        constraint_count = check_df.filter(F.col(f"check_{constraint_name}")).count()
+        constraint_stats[constraint_name] = constraint_count / n_rows
+        print(f"Constraint '{constraint_name}' satisfied: {constraint_stats[constraint_name]:.4f}")
+    print('-' * 40)
+
+    # 6. Outlier Detection
+    #====================
+    log.info("Performing Outlier Detection")
+
+    outlier_df = df.select("datetime_iso")
+    for col in parameter_columns:
+        # Consider 7 day-window (i.e. 7*12 rows)
+        outlier_df = detect_TS_outliers(df, outlier_df, col, window_size=84, timestamp_col="datetime_iso")
+    outlier_df = outlier_df.orderBy("datetime_iso")
+
+    # Outliers per row
+    # ----------------
+    outlier_cols = [c for c in outlier_df.columns if c.startswith("is_outlier_")]
+
+    # Add total outliers column
+    outlier_stats = outlier_df.withColumn("total_outliers", sum(F.col(c).cast("int") for c in outlier_cols))
+    outlier_stats.orderBy(F.desc("total_outliers")).show(5)
+
+    # Outliers per Attribute
+    # ----------------
+    param_stats = outlier_df.agg(*[F.sum(F.col(c).cast("integer")).alias(c) for c in outlier_cols]).toPandas().T.reset_index()
+    param_stats.columns = ["Parameter", "Total_Outliers"]
+
+    # Calculate outlier percentage
+    total_rows = outlier_df.count()
+    param_stats["Outlier_Pct"] = (param_stats["Total_Outliers"] / total_rows * 100).round(2)
+
+    print("Outliers by Parameter:")
+    print(param_stats.sort_values("Total_Outliers", ascending=False).to_string())
+
+    # 7. Improve the quality of the data
+    #===================================
+    # Remove tuples: duplicates and (aggregation, that has been done with pivot function in formatting)
+    df = df.dropDuplicates(["datetime_iso"])
+    log.info(f"Duplicates removed: {n_rows - df.count()}")
+
+    # Remove attributes:
+    # ------------------
+
+    # Low variance columns: this is metadata, separate it from data!
+    low_cardinality_cols = [(key, df.select(key).first()[0]) for key, count in results["unique_counts"] if count == 1]
+    log.info(f"Separate columns that are metadata: {','.join(low_cardinality_cols)}")
+
+    # High null columns ()
+    log.info("Handling Missing Values")
+    
+    # Outliers
+    
     if spark:
         spark.stop()
         log.info("Spark session closed")

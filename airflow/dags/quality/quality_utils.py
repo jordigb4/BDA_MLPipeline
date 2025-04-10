@@ -90,7 +90,7 @@ def print_dataset_profile(results: dict) -> None:
 
     # Build output sections
     sections = [
-        f"Total Rows: {results['total_rows']} \n Total Columns: {results['total_cols']}",
+        f"Total Rows: {results['total_rows']} \nTotal Columns: {results['total_cols']}",
         create_section("Unique Values Count", results['unique_counts']),
         create_section("Numeric Columns", {"columns": results['numeric_columns']} 
           if results['numeric_columns'] else "No numeric columns")
@@ -152,6 +152,62 @@ def compute_attribute_timeliness(df: DataFrame, column: str, transactionTime_col
     
     # Calculate average score for the attribute
     return df.agg(F.lit(column).alias("attribute"), F.avg("Q_T_v").alias("timeliness_score"))
+
+
+def detect_TS_outliers(df, outlier_df, col_name, window_size=7, timestamp_col="datetime_iso"):
+    """
+    Detects outliers in time series data using rolling IQR.
+    
+    Args:
+        df: Spark DataFrame with datetime column
+        outlier_df: Accumulated DataFrame with outlier results
+        col_name: Column to analyze for outliers
+        window_size: Nº of rows of the rolling window for IQR calculations
+        timestamp_col: Column with datetime values
+    
+    Returns:
+        Updated outlier_df with new outlier columns
+    """
+
+    # Process a temporary DataFrame
+    temp_df = df.orderBy(timestamp_col)
+    
+    # Calculate daily increases, imputing 0 for the first row
+    window_spec = Window.orderBy(timestamp_col)
+    temp_df = temp_df.withColumn(f"daily_increase_{col_name}", 
+        F.col(col_name) - F.lag(col_name, 1).over(window_spec)).withColumn(f"daily_increase_{col_name}",
+                                                                    F.when(F.col(f"daily_increase_{col_name}").isNull(), 0)
+                                                                    .otherwise(F.col(f"daily_increase_{col_name}"))
+                                                                    )
+    
+    # Rolling calculations
+    rolling_window = Window.orderBy(timestamp_col).rowsBetween(-(window_size-1), 0)
+    temp_df = temp_df.withColumn(
+        f"rolling_Q1_{col_name}", 
+        F.expr(f"percentile_approx(daily_increase_{col_name}, 0.25, 100)").over(rolling_window)
+    ).withColumn(
+        f"rolling_Q3_{col_name}", 
+        F.expr(f"percentile_approx(daily_increase_{col_name}, 0.75, 100)").over(rolling_window)
+    ).withColumn(
+        f"rolling_IQR_{col_name}", 
+        F.col(f"rolling_Q3_{col_name}") - F.col(f"rolling_Q1_{col_name}")
+    ).withColumn(
+        f"rolling_upper_{col_name}", 
+        F.col(f"rolling_Q3_{col_name}") + F.lit(5) * F.col(f"rolling_IQR_{col_name}")
+    )
+    
+    # Outlier flags
+    temp_df = temp_df.withColumn(f"is_outlier_{col_name}", 
+        F.col(f"daily_increase_{col_name}") > F.col(f"rolling_upper_{col_name}")
+    )
+
+    # Select PK column + outlier column and dialiy increase associated
+    new_columns = [timestamp_col] + [c for c in temp_df.columns 
+                                    if c.startswith(("daily_increase_", "is_outlier_")) and col_name in c]
+    temp_outlier = temp_df.select(new_columns).dropDuplicates([timestamp_col])
+    
+    # Merge with outlier_df
+    return outlier_df.join(temp_outlier, [timestamp_col], "left")
 
 
 def interpolate_missing(df):
