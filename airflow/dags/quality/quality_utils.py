@@ -2,6 +2,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import NumericType
 from pyspark.sql.window import Window
 from pyspark.sql import DataFrame
+from pyspark.sql.types import DateType
+from datetime import timedelta
 
 # ===================
 # Profiling Functions
@@ -253,5 +255,43 @@ def interpolate_missing(df):
 
     return df
 
-
-
+def check_missing_dates(df: DataFrame, date_col: str = 'datetime_iso') -> dict:
+    """
+    Checks for missing dates in the dataset based on the 'datetime_iso' column.
+    Returns a dictionary containing:
+        - 'missing_dates': A list of dates that are missing.
+        - 'all_dates': A list of all dates in the range.
+        - 'is_complete': Boolean indicating if all dates are present in the range.
+    """
+    
+    # Convert 'datetime_iso' to date type
+    df = df.withColumn('date_only', F.to_date(F.col(date_col), 'yyyy-MM-dd'))
+    
+    # Get the minimum and maximum date from the column
+    min_date = df.select(F.min('date_only')).first()[0]
+    max_date = df.select(F.max('date_only')).first()[0]
+    print("Range of dates: ", min_date,max_date)
+    
+    # Generate a sequence of dates from min_date to max_date using Python's timedelta
+    date_range = []
+    current_date = min_date
+    while current_date <= max_date:
+        date_range.append(current_date)
+        current_date += timedelta(days=1)
+    
+    # Create a DataFrame with all dates in the range
+    all_dates_df = df.sparkSession.createDataFrame([(d,) for d in date_range], ['date_only'])
+    # Get the dates present in the dataset
+    present_dates_df = df.select('date_only').distinct()
+    # Find missing dates 
+    missing_dates_df = all_dates_df.join(present_dates_df, on='date_only', how='left_anti')
+    # Collect the missing dates
+    missing_dates = [row['date_only'] for row in missing_dates_df.collect()]
+    # Check if all dates are present
+    is_complete = len(missing_dates) == 0
+    
+    return {
+        'missing_dates': missing_dates,
+        'all_dates': date_range,
+        'is_complete': is_complete
+    }
