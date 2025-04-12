@@ -4,6 +4,8 @@ from airflow import DAG
 import landing as landing_tasks
 import formatting as formatting_tasks
 import quality as quality_tasks
+import exploitation as exploitation_tasks
+
 load_dotenv(dotenv_path='/opt/airflow/.env')
 
 default_args = {
@@ -25,15 +27,23 @@ with DAG(
 ) as dag:
 
     # Ingestion tasks (save in HDFS)
-    ingest_weather, ingest_traffic, ingest_air, ingest_electricity = landing_tasks.create_tasks(dag)
+    #ingest_weather, ingest_traffic, ingest_air, ingest_electricity = landing_tasks.create_tasks(dag)
+    ingest_weather,ingest_electricity= landing_tasks.create_tasks(dag)
 
     # Formatting tasks
-    format_weather, format_air, format_traffic, format_electricity = formatting_tasks.create_tasks(dag)
+    format_weather,format_electricity = formatting_tasks.create_tasks(dag)
+    #format_weather, format_air, format_traffic, format_electricity = formatting_tasks.create_tasks(dag)
 
     # Quality tasks
-    quality_weather, quality_air, quality_traffic = quality_tasks.create_tasks(dag)
+    quality_weather,quality_electricity = quality_tasks.create_tasks(dag)
 
-    [ingest_weather >> format_weather >> quality_weather, 
-    ingest_traffic >> format_traffic >> quality_traffic,
-    ingest_air >> format_air >> quality_air,
-    ingest_electricity >> format_electricity]
+    # Exploitation tasks
+    weather_electricity = exploitation_tasks.create_tasks(dag)
+
+
+    #[ingest_weather >> format_weather >> quality_weather,
+    #ingest_traffic >> format_traffic >> quality_traffic,
+    #ingest_air >> format_air >> quality_air,
+    #ingest_electricity >> format_electricity]
+
+    [ingest_weather >> format_weather >> quality_weather,ingest_electricity >> format_electricity >> quality_electricity] >> weather_electricity
