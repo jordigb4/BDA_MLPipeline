@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 def quality_weather(postgres_manager: PostgresManager):
     """Orchestrates quality processing for all weather stations."""
     for station in WeatherStationId:
-        input_table = f"formatted_weather_{station.name}"
+        input_table = f"fmtted_weather_{station.name}"
         output_table = f"trusted_weather_{station.name}"
         quality_station_weather(input_table, output_table, postgres_manager)
 
@@ -91,6 +91,8 @@ def quality_station_weather(input_table: str, output_table: str, postgres_manage
                      and recent_df.filter(F.col(col).isNull()).count() > 730 * 0.2]
     filtered_df = df.drop(*unstable_cols)
 
+    keep_columns = filtered_df.columns #Keep original columns
+
     # 5. Denial Constraints
     DC = {
         "non_negative_precipitation": F.col("PRCP") >= 0,
@@ -111,6 +113,7 @@ def quality_station_weather(input_table: str, output_table: str, postgres_manage
     log.info(f"Consistency ratio: {Q_consistency:.4f}")
 
     df = check_df.filter("all_valid")
+
     # 7. Data Cleaning
     # Remove duplicates
     cleaned_df = df.dropDuplicates(["datetime_iso"])
@@ -125,7 +128,17 @@ def quality_station_weather(input_table: str, output_table: str, postgres_manage
     final_completeness = compute_relation_completeness(final_df)
     log.info(f"Final completeness: {final_completeness:.4f}")
 
-    # 9. Write Results
+    # 9. Keep desired columns
+    final_df = final_df.select(*keep_columns)
+
+    log.info("Schema before writing to Postgres:")
+    final_df.printSchema()
+    log.info("Sample data before writing:")
+    final_df.show(5, truncate=False)
+    if final_df.count() == 0:
+        log.warning(f"DataFrame for {output_table} is empty. Skipping write.")
+
+    # 10. Write Results
     postgres_manager.write_dataframe(final_df, output_table)
     spark.stop()
     log.info(f"Completed processing for {input_table}")

@@ -59,21 +59,11 @@ def format_electricity_data(postgres_manager: PostgresManager):
             .withColumnRenamed("timezone", "timezone_id") \
             .withColumnRenamed("value-units", "unit_of_measure")
 
-        # Data types conversion: 'date' column to DateType
-        df = df.withColumn("date", F.to_date("date", "yyyy-MM-dd"))
+        # Data types conversion: 'date' column to DateType (ISO Format)
+        df = df.withColumn("datetime_iso", F.to_date("date", "yyyy-MM-dd"))
 
         # Data types conversion: value to numerical
         df = df.withColumn("value", F.col("value").cast(DoubleType()))
-
-        # Standarize to ISO 8601
-        df = df.withColumn("datetime_iso", F.concat(
-            F.col("date"),
-            F.lit(" 00:00")))
-        df = df.withColumn("datetime_iso",
-                           F.to_timestamp("datetime_iso", "yyyy-MM-dd HH:mm"))  # 'datetime_iso' to timestamp
-
-        df = df.withColumn("datetime_iso", F.date_format(
-            F.col("datetime_iso"), "yyyy-MM-dd'T'HH:mm:ss'+00:00'"))
 
         # 3. Value Formatting
         # ===================

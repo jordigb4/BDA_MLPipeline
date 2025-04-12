@@ -19,7 +19,7 @@ def format_weather(postgres_manager: PostgresManager):
 
     for station in [WeatherStationId.LONG_BEACH, WeatherStationId.DOWNTOWN, WeatherStationId.RESEDA]:
         landing_path = base_hdfs_path + station.name
-        table_name = f"formatted_weather_{station.name}"
+        table_name = f"fmtted_weather_{station.name}"
         format_station_weather(landing_path, table_name, postgres_manager)
 
 
