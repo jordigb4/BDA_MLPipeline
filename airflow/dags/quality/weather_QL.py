@@ -115,14 +115,15 @@ def quality_station_weather(input_table: str, output_table: str, postgres_manage
     df = check_df.filter("all_valid")
 
     # 7. Data Cleaning
-    # Remove duplicates
-    cleaned_df = df.dropDuplicates(["datetime_iso"])
 
     # We don't handle outliers as the population distribution
     # is identical to the real population
 
     # Impute missing values
-    final_df = interpolate_missing(cleaned_df, "datetime_iso")
+    final_df = interpolate_missing(df, "datetime_iso")
+
+    # Remove duplicates
+    final_df = final_df.dropDuplicates(["datetime_iso"])
 
     # 8. Post-Cleaning Metrics
     final_completeness = compute_relation_completeness(final_df)
