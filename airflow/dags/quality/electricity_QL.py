@@ -119,10 +119,18 @@ def quality_electricity(input_table: str, output_table: str, postgres_manager: P
     # Remove duplicates
     cleaned_df = df.dropDuplicates(["datetime_iso"])
 
-    #Remove low variance columns
-    low_cardinality_cols = [f"{key}={cleaned_df.select(key).first()[0]}" for key, count in results["unique_counts"].items() if count == 1]
-    log.info(f"Separate columns that are metadata: {', '.join(low_cardinality_cols)}")
+    # Column filtering
+    to_remove = []
 
+    # Low variance columns
+    low_cardinality_cols = [key for key, count in results["unique_counts"].items() if count == 1]
+    log.info(f"Separate columns that are metadata: {', '.join(low_cardinality_cols)}")
+    to_remove.extend(low_cardinality_cols)
+
+    # Redundant columns
+    to_remove.extend(['date'])
+
+    cleaned_df = cleaned_df.drop(*to_remove)
     # Impute missing values
     final_df = interpolate_missing(cleaned_df, "datetime_iso")
 
