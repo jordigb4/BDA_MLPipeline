@@ -81,6 +81,11 @@ def format_station_weather(landing_path: str, table_name: str, postgres_manager:
     logging.info("\nSample Data:")
     pivoted_df.show(5, truncate=False)
 
+    # 4.1 These measures are in tenths of mm,C,C. Pass it to standard.
+    for col in ["PRCP", "TMAX", "TMIN"]:
+        if col in pivoted_df.columns:
+            pivoted_df = pivoted_df.withColumn(col, F.col(col) / 10.0)
+
     # 5. Write to PostgreSQL
     # =============================
     postgres_manager.write_dataframe(pivoted_df, table_name)

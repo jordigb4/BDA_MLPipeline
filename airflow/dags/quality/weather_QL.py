@@ -95,8 +95,8 @@ def quality_station_weather(input_table: str, output_table: str, postgres_manage
     DC = {
         "non_negative_precipitation": F.col("PRCP") >= 0,
         "tmax_gte_tmin": F.col("TMAX") >= F.col("TMIN"),
-        "valid_tmax_range": F.col("TMAX").between(-900, 600),
-        "valid_tmin_range": F.col("TMIN").between(-900, 600),
+        "valid_tmax_range": F.col("TMAX").between(-65, 60),
+        "valid_tmin_range": F.col("TMIN").between(-65, 60),
     }
 
     # 6. Apply Constraints
