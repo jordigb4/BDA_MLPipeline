@@ -253,12 +253,14 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     # Remove attributes:    
     # ------------------
     # Low variance columns: this is metadata, separate it from data!
-    low_cardinality_cols = [f"{key}={df.select(key).first()[0]}" for key, count in results["unique_counts"].items() if count == 1]
+    unique_cols = [key for key, count in results["unique_counts"].items() if count == 1]
+    low_cardinality_cols = [f"{key}={df.select(key).first()[0]}" for key in unique_cols]
+    df = df.drop(*unique_cols)
     log.info(f"Separate columns that are metadata: {', '.join(low_cardinality_cols)}")
-
+    
     # Remove columns with high missing values (i.e. > 50 %), imputation would be artificial!
     null_counts = df.select([F.sum(F.col(c).isNull().cast("int")).alias(c) for c in df.columns]).collect()[0]
-    to_remove = [col for col in df.columns if (null_counts[col] / n_rows_new) > 0.5]
+    to_remove = [col for col in df.columns if (null_counts[col] / n_rows_new) > 0.2]
 
     df = df.drop(*to_remove)
     log.info(f"Columns with too many missing values removed: {', '.join(to_remove)}")
@@ -266,37 +268,21 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     # Correct missing values:
     # -----------------------
     # Imputation with linear interpolation
-    df_clean = interpolate_missing(df, date_col="datetime_iso")
+    df_clean = impute_with_zero(df)
 
     # Report Final Completeness Metric
-    #Q_cm_rel = compute_relation_completeness(df_clean)
-    #print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
+    Q_cm_rel = compute_relation_completeness(df_clean)
+    print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
 
     # Sample of final data
     print("\nSample of final data:")
     df_clean.show(5)
     print(f"Enhanced data has {df_clean.count()} rows and {len(df_clean.columns)} columns.")
-
+    
     # Export df with enhanced quality to PostgreSQL
     # =============================================
     log.info("Exporting DataFrame to PostgreSQL")
     postgres_manager.write_dataframe(df_clean, output_table)
-    
-    def null_summary(df):
-        """Return null counts and percentages for all columns"""
-        total_rows = df.count()
-        return {
-            col: {
-                "null_count": df.filter(F.col(col).isNull()).count(),
-                "null_pct": round(df.filter(F.col(col).isNull()).count() / total_rows * 100, 2)
-            }
-            for col in df.columns
-        }
-
-    # Usage
-    summary = null_summary(df_clean)
-    for col, stats in summary.items():
-        print(f"{col}: {stats['null_count']} nulls ({stats['null_pct']}%)")
         
     if spark:
         spark.stop()
