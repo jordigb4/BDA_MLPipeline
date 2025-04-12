@@ -116,10 +116,13 @@ def format_area_acc(landing_path: str, table_name: str, postgres_manager: Postgr
                                     "yyyy-MM-dd HH:mm"),
                                 "yyyy-MM-dd'T'HH:mm:ss'+00:00'")
         )
-        df = df.withColumn("datetime_iso", F.col("datetime_iso").cast(TimestampType()))
-        
+        df = df.withColumn("datetime_iso", F.col("datetime_iso").cast(TimestampType()))        
         # Result:
         # 2019-04-11 00:00:00 (date) & 05:40 (time) -> 2019-04-11T05:40:00XXX
+
+        # Revert date_occ and date_rptd to dates
+        df = df.withColumn("date_rptd", F.to_date("date_rptd"))
+        df = df.withColumn("date_occ", F.to_date("date_occ"))
 
         # 3. Value Formatting
         # ===================

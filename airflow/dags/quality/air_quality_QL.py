@@ -98,7 +98,7 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     parameter_columns = set(results["numeric_columns"]) - set(["lat", "lon"])
     DC = {}
 
-    # 1. All parameters must be positive
+    # 1. All parameters must be positive    
     pos_conditions = [F.col(c) >= 0 for c in parameter_columns]
     DC["pos_params"] = reduce(lambda a, b: a & b, pos_conditions)
 
@@ -283,7 +283,29 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     # =============================================
     log.info("Exporting DataFrame to PostgreSQL")
     postgres_manager.write_dataframe(df_clean, output_table)
-        
+
+    # Export also the df aggregated by day for further anaylsis
+    # ---------------------------------------------------------
+    existing_params = [p for p in parameter_columns if p in df_clean.columns]
+    agg_exprs = [F.round(F.avg(p), 4).alias(p) for p in existing_params]
+
+    if "datetime_iso" in df_clean.columns:
+        agg_exprs.append(F.count("datetime_iso").alias("hourly_readings"))
+
+    if agg_exprs:
+        aggregated_daily = df_clean.withColumn("datetime_iso", F.to_date("datetime_iso")) \
+            .groupBy("datetime_iso") \
+            .agg(*agg_exprs)
+    else:
+        aggregated_daily = df_clean.withColumn("datetime_iso", F.to_date("datetime_iso")) \
+            .select("datetime_iso").distinct()
+        log.warning("No air quality parameters found for aggregation.")
+    
+    df_agg = aggregated_daily.orderBy("datetime_iso")
+    postgres_manager.write_dataframe(df_agg, output_table + "_agg")
+    print("\nSample of final aggregated data:")
+    df_agg.show(10)
+
     if spark:
         spark.stop()
         log.info("Spark session closed")

@@ -12,7 +12,7 @@ default_args = {
     'owner': 'airflow', # Specifies the owner of the DAG
     'start_date': datetime(2023, 1, 1), # Defines when the DAG should first start running
     'retries': 2,  # Number of retries before failing permanently
-    'retry_delay': timedelta(minutes=5),  # Wait 5 minutes between retries
+    'retry_delay': timedelta(minutes=2),  # Wait 5 minutes between retries
     'execution_timeout': timedelta(minutes=30),  # Max allowed runtime per task
 
 }
@@ -27,23 +27,31 @@ with DAG(
 ) as dag:
 
     # Ingestion tasks (save in HDFS)
-    #ingest_weather, ingest_traffic, ingest_air, ingest_electricity = landing_tasks.create_tasks(dag)
-    ingest_weather,ingest_electricity= landing_tasks.create_tasks(dag)
+    ingest_weather, ingest_traffic, ingest_air, ingest_electricity = landing_tasks.create_tasks(dag)
+    #ingest_weather,ingest_electricity= landing_tasks.create_tasks(dag)
 
     # Formatting tasks
-    format_weather,format_electricity = formatting_tasks.create_tasks(dag)
-    #format_weather, format_air, format_traffic, format_electricity = formatting_tasks.create_tasks(dag)
+    #format_weather,format_electricity = formatting_tasks.create_tasks(dag)
+    format_weather, format_air, format_traffic, format_electricity = formatting_tasks.create_tasks(dag)
 
     # Quality tasks
-    quality_weather,quality_electricity = quality_tasks.create_tasks(dag)
+    #quality_weather, quality_electricity = quality_tasks.create_tasks(dag)
+    quality_weather, quality_air, quality_traffic, quality_electricity = quality_tasks.create_tasks(dag)
 
     # Exploitation tasks
-    weather_electricity = exploitation_tasks.create_tasks(dag)
+    weather_electricity, air_electricity_weather, trafficAcc_weather = exploitation_tasks.create_tasks(dag)
 
+    ingest_weather >> format_weather >> quality_weather
+    ingest_traffic >> format_traffic >> quality_traffic
+    ingest_air >> format_air >> quality_air
+    ingest_electricity >> format_electricity >> quality_electricity
 
-    #[ingest_weather >> format_weather >> quality_weather,
-    #ingest_traffic >> format_traffic >> quality_traffic,
-    #ingest_air >> format_air >> quality_air,
-    #ingest_electricity >> format_electricity]
+    # Group the final quality tasks from all pipelines
+    all_quality_tasks = [quality_weather, quality_traffic, quality_air, quality_electricity]
 
-    [ingest_weather >> format_weather >> quality_weather,ingest_electricity >> format_electricity >> quality_electricity] >> weather_electricity
+    # Set all downstream tasks to run in parallel AFTER all quality tasks complete
+    all_quality_tasks >> weather_electricity
+    all_quality_tasks >> air_electricity_weather
+    all_quality_tasks >> trafficAcc_weather
+
+    #[ingest_weather >> format_weather >> quality_weather,ingest_electricity >> format_electricity >> quality_electricity] >> weather_electricity
