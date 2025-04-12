@@ -322,3 +322,20 @@ def check_missing_dates(df: DataFrame, date_col: str = 'datetime_iso') -> dict:
         'all_dates': date_range,
         'is_complete': is_complete
     }
+
+def impute_with_zero(df):
+    """
+    Replaces missing values with 0 in all parameter columns.
+    Use with caution - zeros may not be appropriate for air quality metrics!
+    """
+    # Identify parameter columns (exclude metadata)
+    parameter_columns = [col for col in df.columns 
+                        if col not in ['datetime_iso', 'lat', 'lon', 'location']]
+    
+    # Impute missing values with 0 while preserving data types
+    for col_name in parameter_columns:
+        df = df.withColumn(col_name, F.coalesce(F.col(col_name), F.lit(0).cast(df.schema[col_name].dataType)))
+    
+    return df
+
+
