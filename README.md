@@ -4,8 +4,7 @@
 
 A containerized data pipeline using Apache Airflow, PostgreSQL, Hadoop HDFS, and a Streamlit frontend for data visualization. Designed for orchestrating ETL workflows and managing data in a distributed environment.
 
-
-<details> <summary><strong>📁 Project Files and Directory Overview</strong></summary>
+```text
 project-root/
 │
 ├── airflow/                             # Airflow service setup and pipelines
@@ -64,7 +63,7 @@ project-root/
 │
 ├── docker-compose.yaml                  # Project-wide service definitions
 └── postgresql-42.7.3.jar                # JDBC driver for PostgreSQL
-<details> 
+
 ## Authors
 
 -Alberto Jerez
