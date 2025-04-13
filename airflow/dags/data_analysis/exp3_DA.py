@@ -1,35 +1,69 @@
 #from dags.utils.other_utils import setup_logging
-from trafficAcc_mocodes import create_mocodes_features
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
+from dags.data_analysis.utils.trafficAcc_mocodes import create_mocodes_features
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from dags.utils.postgres_utils import PostgresManager
+from sklearn.ensemble import RandomForestClassifier
+from dags.utils.other_utils import setup_logging
+from sklearn.compose import ColumnTransformer
+from dags.utils.hdfs_utils import HDFSManager
 from plotly.subplots import make_subplots
+from sklearn.pipeline import Pipeline
+from pyspark.sql import SparkSession
+import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
 import numpy as np
-import re
-
+import pickle
+import os
+import io
 
 # Configure logging
-#log = setup_logging(__name__)
+log = setup_logging(__name__)
 
 # Custom color scheme
 COLOR_SCALE = ['#2A4C7D', '#4ECDC4', '#FF6B6B', '#6C5B7B']
 TEMPLATE = 'plotly_white'
 
-def task_3_analysis():
-    
-    # 1. Read and visualize the data
-    # ===========================
-    #log.info("Starting Task 3 Data Analysis Pipeline!")
-    df = pd.read_csv('data/trafficAcc_weather.csv')
-    df.head(5)
 
-    # 2. Feature engineering
+def data_analysis_3(hdfs_manager: HDFSManager, postgres_manager: PostgresManager, input_view: str = 'experiment3'):
+    """Function to upload to hdfs the resulting figures of the analysis, for further streamlit plotting"""
+
+    # Spark session
+    spark = SparkSession.builder \
+        .config("spark.jars", os.getenv('JDBC_URL')) \
+        .appName("DataAnalysis3") \
+        .getOrCreate()
+
+    # Base path for experiments
+    hdfs_path = '/data/data_analysis/exp3/'
+    hdfs_manager.mkdirs(hdfs_path)
+    log.info(f'Making directories for plot storing: {hdfs_path}')
+
+    # Read view
+    df = postgres_manager.read_table(spark, input_view)
+
+    # Generate the necessary figures to plot
+    figs = task_3_analysis(df)
+  
+    # Serialize figures to an in-memory bytes buffer
+    for name, fig in figs.items():
+        buffer = io.BytesIO()
+        pickle.dump(fig, buffer)
+        buffer.seek(0)
+
+        # Define HDFS file path
+        hdfs_file_path = hdfs_path + f"{name}.pkl"
+        log.info(f"Saving {name} to {hdfs_file_path}")
+
+        # Upload buffer content directly to HDFS
+        with hdfs_manager._client.write(hdfs_file_path, overwrite=True) as writer:
+            writer.write(buffer.read())
+
+def task_3_analysis(df):
+    """Perform the task 3 experiment, which works with traffic accident data and weather's"""
+
+    # 1. Feature engineering
     # ===================
 
     # Date & Time Features
@@ -108,7 +142,7 @@ def task_3_analysis():
     'premis_cd', 'TMAX', 'TMIN', 'PRCP', 'temp_range', 'is_raining']
     df = df[new_order]
 
-    # 4. Key Visualizations
+    # 2. Key Visualizations
     # =====================
     # Visualization 1: Time Series Analysis
     # -------------------------------------
@@ -139,7 +173,8 @@ def task_3_analysis():
             x=1),
         margin=dict(t=100))
 
-    # 2. Temporal Patterns (Monthly/Day of Week Analysis)
+    # Visualization 2: Temporal Patterns
+    # ----------------------------------
     month_order = ['January', 'February', 'March', 'April', 'May', 'June', 
                 'July', 'August', 'September', 'October', 'November', 'December']
     day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -216,7 +251,7 @@ def task_3_analysis():
     fig3.update_yaxes(showgrid=False, row=3, col=1)
 
 
-    # 5. Data Analysis: predict seriousness of accident -> Non Injury, Visible Injury, Severe Injury
+    # 3. Data Analysis: predict seriousness of accident -> Non Injury, Visible Injury, Severe Injury
     # =================
     # Discard unknown values for Level Injury
     df = df[df['Injury_Level'] != 'unknown']
@@ -240,7 +275,7 @@ def task_3_analysis():
     print(f"Training set: {len(train_df)} records from {train_df['datetime_occ'].min()} to {train_df['datetime_occ'].max()}")
     print(f"Validation set: {len(val_df)} records from {val_df['datetime_occ'].min()} to {val_df['datetime_occ'].max()}")
 
-    # 6. Identify relevant features for modeling
+    # 4. Identify relevant features for modeling
     # ==========================================
     time_cols = ['occ_day', 'occ_month', 'occ_hour']
     numerical_cols = ['vict_age', 'is_weekend', 'temp_range', 'TMAX', 'TMIN', 'PRCP']
@@ -265,18 +300,20 @@ def task_3_analysis():
             ('time', 'passthrough', time_cols),
             ('cat', categorical_transformer, categorical_cols)
         ])
+    
+    # 5. Create the model: Random Forest Classifier
+    # ==========================================
 
-    # Create an improved Random Forest with better hyperparameters
     rf_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('classifier', RandomForestClassifier(
-            n_estimators=200,        # Increased from 100
-            max_depth=25,            # Increased from 20
+            n_estimators=200,        
+            max_depth=25,           
             min_samples_split=8,
             min_samples_leaf=3,
             max_features='sqrt',
             class_weight='balanced',
-            criterion='entropy',     # Changed from default 'gini'
+            criterion='entropy',
             random_state=42,
             n_jobs=-1
         ))
@@ -288,10 +325,6 @@ def task_3_analysis():
     y_train = train_df[target]
     X_val = val_df[all_features]
     y_val = val_df[target]
-
-    print(f"Training set shape: {X_train.shape}")
-    print(f"Validation set shape: {X_val.shape}")
-    print(f"Using {len(all_features)} features")
 
     # Train the model
     print("Training Random Forest model...")
@@ -366,6 +399,11 @@ def task_3_analysis():
 
     fig_corr.update_layout(height=600, margin=dict(t=100, l=20, r=20, b=20))
 
-    return fig1, fig2, fig3, fig_importance, fig_cm, fig_corr
-    
-task_3_analysis()
+    return {
+        "time_series_fig": fig1,
+        "date_acc_patterns": fig2,
+        "weather_impact_fig": fig3,
+        "feature_importance_fig": fig_importance,
+        "results_cm_fig": fig_cm,
+        "results_corr_fig": fig_corr
+    }

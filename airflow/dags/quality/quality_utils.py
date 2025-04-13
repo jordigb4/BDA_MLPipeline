@@ -260,25 +260,55 @@ def interpolate_missing(df, date_col: str = "DATE") -> DataFrame:
     return df
 
 def impute_with_mode(df):
-    """Impute missing values with mode for categorical columns only"""
+    """Impute missing values with mode for specified categorical columns.
     
-    def compute_column_mode(df, column: str):
-        """Calculate mode with null handling"""
-        return df.groupBy(column).count().orderBy(F.desc("count")).limit(1).select(column).first()[0]
+    Args:
+        df: Input Spark DataFrame
+        categorical_cols: List of categorical columns to impute.
+                          If None, auto-detect string columns.
     
-    # Identify categorical columns (StringType)
+    Returns:
+        DataFrame with imputed categorical columns
+    """
+    
+    # Auto-detect string columns if not specified
     categorical_cols = [col for col, dtype in df.dtypes if dtype == 'string']
+    print(categorical_cols)
     
-    # Calculate modes only for categorical columns
-    modes = {col: compute_column_mode(df, col) for col in categorical_cols}
-    
-    # Apply the imputation using the stored mode values
-    for column, mode in modes.items():
-        df = df.withColumn(
-            column, 
-            F.when(F.col(column).isNull(), mode).otherwise(F.col(column))
-        )
-    
+    # 2. Efficient mode calculation using window functions
+    modes = {}
+    for col in categorical_cols:
+        # Calculate mode with tie handling and null protection
+        mode_df = (df
+                   .groupBy(col)
+                   .agg(F.count("*").alias("count"))
+                   .withColumn("rank", F.dense_rank().over(Window.orderBy(F.desc("count"))))
+                   .filter(F.col("rank") == 1)
+                   .limit(1)
+                  )
+        
+        # Handle empty results (all nulls in original column)
+        mode_row = mode_df.first()
+        modes[col] = mode_row[col] if mode_row else None
+
+    # 3. Safely apply imputation with null checks
+    for col in categorical_cols:
+        mode_value = modes.get(col)
+        
+        if mode_value is not None:
+            df = df.withColumn(
+                col,
+                F.when(F.col(col).isNull(), mode_value)
+                 .otherwise(F.col(col))
+            )
+        else:
+            # Handle all-null columns by filling with literal 'unknown'
+            df = df.withColumn(
+                col,
+                F.when(F.col(col).isNull(), 'unknown')
+                 .otherwise(F.col(col))
+            )
+
     return df
 
 
@@ -323,20 +353,6 @@ def check_missing_dates(df: DataFrame, date_col: str = 'datetime_iso') -> dict:
         'is_complete': is_complete
     }
 
-def impute_with_zero(df):
-    """
-    Replaces missing values with 0 in all parameter columns.
-    Use with caution - zeros may not be appropriate for air quality metrics!
-    """
-    # Identify parameter columns (exclude metadata)
-    parameter_columns = [col for col in df.columns 
-                        if col not in ['datetime_iso', 'lat', 'lon', 'location']]
-    
-    # Impute missing values with 0 while preserving data types
-    for col_name in parameter_columns:
-        df = df.withColumn(col_name, F.coalesce(F.col(col_name), F.lit(0).cast(df.schema[col_name].dataType)))
-    
-    return df
 
 def interpolate_impute(df, columns_to_impute):
     """Impute missing values using temporal interpolation between adjacent measurements."""
@@ -361,4 +377,48 @@ def interpolate_impute(df, columns_to_impute):
             ).otherwise(F.col(col))
         ).drop(f"prev_{col}", f"next_{col}")
     
+    return df
+
+def impute_numerical(df, numerical_cols: list = None, strategy: str = 'median', default_fill: float = 0.0):
+    """
+    Impute missing values in numerical columns using specified strategy.
+    
+    Args:
+        df: Input Spark DataFrame
+        numerical_cols: List of numerical columns to impute (None = auto-detect)
+        strategy: Imputation strategy - 'median' (default) or 'mean'
+        default_fill: Default value for all-null columns
+    
+    Returns:
+        Imputed DataFrame
+    """
+    # 1. Auto-detect numerical columns if not specified
+    if numerical_cols is None:
+        numerical_cols = [col for col, dtype in df.dtypes if dtype in ['int', 'bigint', 'double', 'float']]
+    
+    # 2. Calculate imputation values
+    impute_values = {}
+    
+    for col in numerical_cols:
+        if strategy == 'median':
+            # Efficient approximate median calculation
+            quantiles = df.approxQuantile(col, [0.5], 0.01)
+            imp_value = quantiles[0] if quantiles else default_fill
+        elif strategy == 'mean':
+            # Protected mean calculation
+            mean_row = df.agg(F.mean(F.col(col)).alias('mean')).first()
+            imp_value = mean_row['mean'] if mean_row and mean_row['mean'] is not None else default_fill
+        else:
+            raise ValueError(f"Invalid strategy: {strategy}. Choose 'median' or 'mean'")
+        
+        impute_values[col] = imp_value
+    
+    # 3. Apply imputation using coalesce
+    for col in numerical_cols:
+        df = df.withColumn(
+            col,
+            F.coalesce(
+                F.col(col),
+                F.lit(impute_values[col])
+        ))
     return df

@@ -19,4 +19,5 @@ python-dotenv
 duckdb
 pyspark
 plotly
-
+scikit-learn
+xgboost

@@ -1,5 +1,4 @@
 import os
-import posixpath
 import plotly.express as px
 from dags.landing.class_types import WeatherStationId
 from dags.utils.hdfs_utils import HDFSManager

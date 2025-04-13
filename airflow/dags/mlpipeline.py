@@ -5,6 +5,7 @@ import landing as landing_tasks
 import formatting as formatting_tasks
 import quality as quality_tasks
 import exploitation as exploitation_tasks
+import data_analysis as data_analysis_tasks
 
 load_dotenv(dotenv_path='/opt/airflow/.env')
 
@@ -41,6 +42,9 @@ with DAG(
     # Exploitation tasks
     weather_electricity, air_electricity_weather, trafficAcc_weather = exploitation_tasks.create_tasks(dag)
 
+    # Data Anlysis Tasks
+    data_analysis_1_task, data_analysis_2_task, data_analysis_3_task = data_analysis_tasks.create_tasks(dag)
+
     ingest_weather >> format_weather >> quality_weather
     ingest_traffic >> format_traffic >> quality_traffic
     ingest_air >> format_air >> quality_air
@@ -50,3 +54,7 @@ with DAG(
     [quality_weather, quality_electricity] >> weather_electricity
     [quality_weather, quality_air, quality_electricity] >> air_electricity_weather
     [quality_weather, quality_traffic] >> trafficAcc_weather
+
+    weather_electricity >> data_analysis_1_task
+    air_electricity_weather >> data_analysis_2_task
+    trafficAcc_weather >> data_analysis_3_task

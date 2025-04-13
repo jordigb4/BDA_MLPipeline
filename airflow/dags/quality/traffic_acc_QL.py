@@ -227,8 +227,13 @@ def quality_station_traffic(input_table: str, output_table: str, postgres_manage
 
     # Correct missing values:
     # -----------------------
-    # Impute missing values with the most frequent value (mode): only categorical missings
-    df_clean = impute_with_mode(df)
+    # Impute missing values with the most frequent value (mode and median)
+    df = impute_with_mode(df)
+    df_clean = impute_numerical(df, strategy='median')
+
+    # Report Final Completeness Metric
+    Q_cm_rel = compute_relation_completeness(df_clean)
+    print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
 
     # Sample of final data
     print("\nSample of final data:")
