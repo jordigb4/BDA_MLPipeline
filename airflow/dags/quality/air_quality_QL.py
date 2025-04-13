@@ -247,7 +247,7 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     # Tuples with lots of missing values (i.e. more than 70% of parameters)
     null_count = reduce(lambda a, b: a + b, [F.isnull(col).cast("int") for col in parameter_columns])
-    df = df.filter((null_count / len(parameter_columns)) < 0.7)
+    #df = df.filter((null_count / len(parameter_columns)) < 0.7)
     log.info(f"Rows with too many missing values removed: {n_rows_new - df.count()}")
     
     # Remove attributes:    
@@ -268,7 +268,8 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
     # Correct missing values:
     # -----------------------
     # Imputation with linear interpolation
-    df_clean = impute_with_zero(df)
+    existing_params = [p for p in parameter_columns if p in df.columns]
+    df_clean = interpolate_impute(df, existing_params)
 
     # Report Final Completeness Metric
     Q_cm_rel = compute_relation_completeness(df_clean)
@@ -286,7 +287,6 @@ def quality_station_air(input_table: str, output_table: str, postgres_manager: P
 
     # Export also the df aggregated by day for further anaylsis
     # ---------------------------------------------------------
-    existing_params = [p for p in parameter_columns if p in df_clean.columns]
     agg_exprs = [F.round(F.avg(p), 4).alias(p) for p in existing_params]
 
     if "datetime_iso" in df_clean.columns:
