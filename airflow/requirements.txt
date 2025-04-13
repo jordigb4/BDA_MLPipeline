@@ -18,4 +18,5 @@ sqlalchemy
 python-dotenv
 duckdb
 pyspark
+plotly
 

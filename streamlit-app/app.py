@@ -1,7 +1,5 @@
-import streamlit as st # type: ignore
-import plotly.express as px # type: ignore
-from db import get_engine, load_table
-from experiment1 import plot_exp_1
+import streamlit as st
+
 # Set up page config
 
 st.set_page_config(
