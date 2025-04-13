@@ -16,6 +16,12 @@ log = setup_logging(__name__)
 def load_data_weather(hdfs_manager: HDFSManager, start_date: str, end_date: str):
 
     try:
+        try:
+            with duckdb.connect() as conn:
+                conn.execute("INSTALL httpfs;")
+        except duckdb.Error as e:
+            log.warning(f"Extension 'httpfs' might already be installed: {e}")
+
         stations = [WeatherStationId.LONG_BEACH, WeatherStationId.DOWNTOWN, WeatherStationId.RESEDA]
         with ThreadPoolExecutor(max_workers=3) as executor:
             # Track futures explicitly
@@ -80,7 +86,7 @@ def load_station_data(station_id: WeatherStationId,
     try:
         with duckdb.connect() as conn:
             # Configure S3 access
-            conn.execute("INSTALL httpfs; LOAD httpfs;")
+            conn.execute("LOAD httpfs;")
             conn.execute("SET s3_region='us-east-1'; SET s3_use_ssl=false;")
 
             # Build S3 source path from environment variable
