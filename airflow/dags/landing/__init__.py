@@ -7,17 +7,23 @@ from .weather_DL import load_data_weather
 from dags.utils import HDFSManager
 from airflow import DAG
 
-# Initialize the Client that connect to NameNode of the launched HDFS
+
 hdfs_manager = HDFSManager()
 
-def create_tasks(dag):
+def create_tasks(dag: DAG,
+                 weather_start_date: str, weather_end_date: str,
+                 traffic_start_date: str, traffic_end_date: str,
+                 air_start_date: str, air_end_date: str,
+                 electricity_start_date: str, electricity_end_date: str):
+
     ingest_weather_task = PythonOperator(
         task_id='ingest_weather',
         python_callable=load_data_weather,
         op_kwargs={
-            'start_date': '2019-01-01',
-            'end_date': '2024-03-31',
-            'hdfs_manager': hdfs_manager},
+            'start_date': weather_start_date,
+            'end_date': weather_end_date,
+            'hdfs_manager': hdfs_manager
+        },
         dag=dag
     )
 
@@ -25,8 +31,8 @@ def create_tasks(dag):
         task_id='ingest_traffic',
         python_callable=load_data_traffic_acc,
         op_kwargs={
-            'start_date': '2019-01-01',
-            'end_date': '2024-03-31',
+            'start_date': traffic_start_date,
+            'end_date': traffic_end_date,
             'hdfs_manager': hdfs_manager,
         },
         dag=dag
@@ -36,8 +42,8 @@ def create_tasks(dag):
         task_id='ingest_air',
         python_callable=load_data_air,
         op_kwargs={
-            'start_date': '2019-01-01',
-            'end_date': '2024-03-31',
+            'start_date': air_start_date,
+            'end_date': air_end_date,
             'hdfs_manager': hdfs_manager,
         },
         dag=dag
@@ -47,8 +53,8 @@ def create_tasks(dag):
         task_id='ingest_electricity',
         python_callable=load_data_electricity,
         op_kwargs={
-            'start_date': '2019-01-01T00',
-            'end_date': '2024-03-31T00',
+            'start_date': electricity_start_date,
+            'end_date': electricity_end_date,
             'hdfs_manager': hdfs_manager,
         },
         dag=dag

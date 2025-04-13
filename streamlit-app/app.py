@@ -58,7 +58,7 @@ with tab2:
 
 
 with tab3:
-    st.subheader("Data analysis 3: Traffic patterns")
+    st.subheader("Data analysis 3: Traffic accident patterns")
     st.write("Identification of traffic accident patterns in relation to weather.")
     'date_acc_patterns'
 
