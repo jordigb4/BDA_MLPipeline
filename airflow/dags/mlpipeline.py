@@ -20,7 +20,7 @@ default_args = {
 with DAG(
     'Machine_Learning_Pipeline',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule_interval=None, # Ideally, we would put it in daily!
     catchup=False,
     tags=['mlpipeline'],
     default_view='graph',  # Default DAG display view
@@ -53,5 +53,3 @@ with DAG(
     all_quality_tasks >> weather_electricity
     all_quality_tasks >> air_electricity_weather
     all_quality_tasks >> trafficAcc_weather
-
-    #[ingest_weather >> format_weather >> quality_weather,ingest_electricity >> format_electricity >> quality_electricity] >> weather_electricity
