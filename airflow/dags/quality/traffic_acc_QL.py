@@ -213,7 +213,9 @@ def quality_station_traffic(input_table: str, output_table: str, postgres_manage
     # Remove attributes:    
     # ------------------
     # Low variance columns: this is metadata, separate it from data!
-    low_cardinality_cols = [f"{key}={df.select(key).first()[0]}" for key, count in results["unique_counts"].items() if count == 1]
+    unique_cols = [key for key, count in results["unique_counts"].items() if count == 1]
+    low_cardinality_cols = [f"{key}={df.select(key).first()[0]}" for key in unique_cols]
+    df = df.drop(*unique_cols)
     log.info(f"Separate columns that are metadata: {', '.join(low_cardinality_cols)}")
 
     # Remove columns with high missing values (i.e. > 50 %), imputation would be artificial!

@@ -4,6 +4,7 @@ from dags.utils.postgres_utils import PostgresManager
 from .weather_QL import quality_weather
 from .air_quality_QL import quality_air
 from .traffic_acc_QL import quality_traffic
+from .electricity_QL import quality_electricity
 
 # Initialize Postgres Manager
 postgres_manager = PostgresManager()
@@ -35,4 +36,14 @@ def create_tasks(dag):
         dag=dag
     )
 
-    return quality_weather_task, quality_air_task, quality_traffic_task
+    quality_electricity_task = PythonOperator(
+        task_id='quality_electricity',
+        python_callable=quality_electricity,
+        op_kwargs={
+            'input_table': 'fmtted_electricity_data',
+            'output_table': 'trusted_electricity_data' ,
+            'postgres_manager': postgres_manager},
+        dag=dag
+    )
+
+    return quality_weather_task, quality_air_task, quality_traffic_task, quality_electricity_task

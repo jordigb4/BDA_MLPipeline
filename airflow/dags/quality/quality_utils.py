@@ -338,4 +338,27 @@ def impute_with_zero(df):
     
     return df
 
-
+def interpolate_impute(df, columns_to_impute):
+    """Impute missing values using temporal interpolation between adjacent measurements."""
+    window_spec = Window.orderBy("datetime_iso")
+    
+    for col in columns_to_impute:
+        # Get previous and next non-null values in time sequence
+        df = (df
+              .withColumn(f"prev_{col}", F.last(col, ignorenulls=True).over(window_spec))
+              .withColumn(f"next_{col}", F.first(col, ignorenulls=True).over(
+                  Window.orderBy(F.desc("datetime_iso")))))
+        
+        # Calculate interpolated value (average of adjacent measurements)
+        df = df.withColumn(col, 
+            F.when(F.col(col).isNull(),
+                F.coalesce(
+                    (F.col(f"prev_{col}") + F.col(f"next_{col}")) / 2,  # Interpolate
+                    F.col(f"prev_{col}"),  # Forward fill if no next
+                    F.col(f"next_{col}"),  # Backward fill if no prev
+                    F.lit(0)              # Fallback
+                )
+            ).otherwise(F.col(col))
+        ).drop(f"prev_{col}", f"next_{col}")
+    
+    return df
