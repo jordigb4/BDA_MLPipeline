@@ -46,10 +46,7 @@ with DAG(
     ingest_air >> format_air >> quality_air
     ingest_electricity >> format_electricity >> quality_electricity
 
-    # Group the final quality tasks from all pipelines
-    all_quality_tasks = [quality_weather, quality_traffic, quality_air, quality_electricity]
-
     # Set all downstream tasks to run in parallel AFTER all quality tasks complete
-    all_quality_tasks >> weather_electricity
-    all_quality_tasks >> air_electricity_weather
-    all_quality_tasks >> trafficAcc_weather
+    [quality_weather, quality_electricity] >> weather_electricity
+    [quality_weather, quality_air, quality_electricity] >> air_electricity_weather
+    [quality_weather, quality_traffic] >> trafficAcc_weather
