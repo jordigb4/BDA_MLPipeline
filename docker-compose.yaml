@@ -118,11 +118,10 @@ services:
     build: ./streamlit-app
     restart: always
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=airflow
-      - DB_PASS=airflow
-      - DB_NAME=airflow
+      - HDFS_URL=http://namenode:50070
+      - HDFS_USER=root
+      - HDFS_FS_URL=hdfs://namenode:8020
+
 
     networks:
       - bdanet

@@ -41,7 +41,7 @@ def data_analysis_3(hdfs_manager: HDFSManager, postgres_manager: PostgresManager
     log.info(f'Making directories for plot storing: {hdfs_path}')
 
     # Read view
-    df = postgres_manager.read_table(spark, input_view)
+    df = postgres_manager.read_table(spark, input_view).toPandas()
 
     # Generate the necessary figures to plot
     figs = task_3_analysis(df)
@@ -96,7 +96,7 @@ def task_3_analysis(df):
         
     df['occ_part_of_day'] = df['occ_hour'].apply(get_part_of_day)
 
-    # Calculate reporting delay
+        # Calculate reporting delay
     df['report_delay_days'] = (df['date_rptd'] - df['date_occ']).dt.days
 
     # Create Weekend flag

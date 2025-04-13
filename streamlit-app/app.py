@@ -1,7 +1,8 @@
 import streamlit as st # type:ignore
+import os
+from utils import load_pickle_from_hdfs
 
 # Set up page config
-
 st.set_page_config(
     page_title="Los Angeles Urban Data Dashboard",
     page_icon="🌇",
@@ -23,27 +24,53 @@ This dashboard offers a visual exploration of how these factors intertwine in sh
 # Tabs for each category
 tab1, tab2, tab3 = st.tabs(["🌤️️⚡ Weather vs Energy", "🌫️ Air Quality prediction", "🚗 Traffic patterns"])
 
-#Data extraction engine
-engine = get_engine()
+#HDFS BASE PATH
+base_hdfs_path = "/data/data_analysis/"
 
 with tab1:
     st.subheader("Data analysis 1: Weather vs Energy")
     st.write("Weather and Energy consumption patterns in LA.")
 
-    df = load_table("experiment1", engine)
+    selected_station1 = st.selectbox("Station name:",('reseda','downtown','long_beach'),
+        key='station1_selectbox')
 
-    if not df.empty:
-        plot_exp_1(df)
-    else:
-        st.warning("No data found.")
+    # Load figure
+    fig = load_pickle_from_hdfs(base_hdfs_path + f'exp1/{selected_station1}.pkl')
 
-        st.title("Energy Consumption vs Weather Conditions")
+    #Plot figure
+    st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    pass
-with tab3:
-    pass
+    st.subheader("Data analysis 2: Air quality prediction")
+    st.write("Air quality prediction based on energy consumption and climate.")
 
+    selected_station2 = st.selectbox("Station name:", ('reseda', 'downtown', 'long_beach'),
+        key='station2_selectbox')
+
+    plot_names = ['fig_errors','fig_importance','fig_real_vs_pred']
+
+    for plot_name in plot_names:
+        #Plot figure
+        fig = load_pickle_from_hdfs(base_hdfs_path + f'exp2/{selected_station2}_{plot_name}.pkl')
+
+        #Load figure
+        st.plotly_chart(fig, use_container_width=True)
+
+
+with tab3:
+    st.subheader("Data analysis 3: Traffic patterns")
+    st.write("Identification of traffic accident patterns in relation to weather.")
+    'date_acc_patterns'
+
+    plot_names = ['feature_importance_fig','results_cm_fig','results_corr_fig','time_series_fig','weather_impact_fig']
+
+    for plot_name in plot_names:
+
+        #Plot figure
+        fig = load_pickle_from_hdfs(base_hdfs_path + f'exp3/{plot_name}.pkl')
+
+        #Load figure
+        st.plotly_chart(fig, use_container_width=True)
 
 # Footer
 st.markdown("---")
