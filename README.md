@@ -1,6 +1,4 @@
-# Project Title
-
-Large Scale Data Engineering Project for AI
+# Large Scale Data Engineering Project for AI
 
 ## Description
 
